@@ -54,8 +54,9 @@ namespace LoL_Announcer_Editor
                 
                 uint objectsRead = 0;
                 uint soundsRead = 0, eventActionsRead = 0, eventsRead = 0, randomContainersRead = 0;
-                uint switchContainersRead = 0, musicSegmentsRead = 0, musicTracksRead = 0;
-                uint musicSwitchesRead = 0, musicPlaylistsRead = 0, unknownTypesRead = 0;
+                uint switchContainersRead = 0, actorMixersRead = 0, settingsRead = 0, audioBusesRead = 0, blendContainersRead = 0;
+                uint attenuationsRead = 0, dialogueEventsRead = 0, motionBusesRead = 0, motionFxsRead = 0, effectsRead = 0, auxiliaryBusesRead = 0;
+                uint musicSegmentsRead = 0, musicTracksRead = 0, musicSwitchesRead = 0, musicPlaylistsRead = 0, unknownTypesRead = 0;
                 
                 while (reader.BaseStream.Position < initialPosition + sectionLength)
                 {
@@ -73,6 +74,10 @@ namespace LoL_Announcer_Editor
                     {
                         switch (type)
                         {
+                            case 1:
+                                BnkObjectReaders.ReadSettingsObject(objReader, sections.Settings, fullObjectBytes);
+                                settingsRead++;
+                                break;
                             case 2:
                                 BnkObjectReaders.ReadSoundObject(objReader, sections.Sounds, bnkVersion, fullObjectBytes);
                                 soundsRead++;
@@ -92,6 +97,42 @@ namespace LoL_Announcer_Editor
                             case 6:
                                 BnkObjectReaders.ReadSwitchContainerObject(objReader, sections.SwitchContainers, bnkVersion, fullObjectBytes);
                                 switchContainersRead++;
+                                break;
+                            case 7:
+                                BnkObjectReaders.ReadActorMixerObject(objReader, sections.ActorMixers, bnkVersion, fullObjectBytes);
+                                actorMixersRead++;
+                                break;
+                            case 8:
+                                BnkObjectReaders.ReadAudioBusObject(objReader, sections.AudioBuses, fullObjectBytes);
+                                audioBusesRead++;
+                                break;
+                            case 9:
+                                BnkObjectReaders.ReadBlendContainerObject(objReader, sections.BlendContainers, fullObjectBytes);
+                                blendContainersRead++;
+                                break;
+                            case 14:
+                                BnkObjectReaders.ReadAttenuationObject(objReader, sections.Attenuations, fullObjectBytes);
+                                attenuationsRead++;
+                                break;
+                            case 15:
+                                BnkObjectReaders.ReadDialogueEventObject(objReader, sections.DialogueEvents, fullObjectBytes);
+                                dialogueEventsRead++;
+                                break;
+                            case 16:
+                                BnkObjectReaders.ReadMotionBusObject(objReader, sections.MotionBuses, fullObjectBytes);
+                                motionBusesRead++;
+                                break;
+                            case 17:
+                                BnkObjectReaders.ReadMotionFxObject(objReader, sections.MotionFxs, fullObjectBytes);
+                                motionFxsRead++;
+                                break;
+                            case 18:
+                                BnkObjectReaders.ReadEffectObject(objReader, sections.Effects, fullObjectBytes);
+                                effectsRead++;
+                                break;
+                            case 19:
+                                BnkObjectReaders.ReadAuxiliaryBusObject(objReader, sections.AuxiliaryBuses, fullObjectBytes);
+                                auxiliaryBusesRead++;
                                 break;
                             case 10:
                                 BnkObjectReaders.ReadMusicContainerObject(objReader, sections.MusicSegments, bnkVersion, fullObjectBytes);
@@ -125,6 +166,16 @@ namespace LoL_Announcer_Editor
                 BnkLogger.LogInfo($"  - Events: {eventsRead}");
                 BnkLogger.LogInfo($"  - RandomContainers: {randomContainersRead}");
                 BnkLogger.LogInfo($"  - SwitchContainers: {switchContainersRead}");
+                BnkLogger.LogInfo($"  - ActorMixers: {actorMixersRead}");
+                BnkLogger.LogInfo($"  - Settings: {settingsRead}");
+                BnkLogger.LogInfo($"  - AudioBuses: {audioBusesRead}");
+                BnkLogger.LogInfo($"  - BlendContainers: {blendContainersRead}");
+                BnkLogger.LogInfo($"  - Attenuations: {attenuationsRead}");
+                BnkLogger.LogInfo($"  - DialogueEvents: {dialogueEventsRead}");
+                BnkLogger.LogInfo($"  - MotionBuses: {motionBusesRead}");
+                BnkLogger.LogInfo($"  - MotionFxs: {motionFxsRead}");
+                BnkLogger.LogInfo($"  - Effects: {effectsRead}");
+                BnkLogger.LogInfo($"  - AuxiliaryBuses: {auxiliaryBusesRead}");
                 BnkLogger.LogInfo($"  - MusicSegments: {musicSegmentsRead}");
                 BnkLogger.LogInfo($"  - MusicTracks: {musicTracksRead}");
                 BnkLogger.LogInfo($"  - MusicSwitches: {musicSwitchesRead}");
@@ -271,6 +322,146 @@ namespace LoL_Announcer_Editor
                                     {
                                         parsed = switchContainers[0];
                                         objId = switchContainers[0].SelfId;
+                                    }
+                                }
+                                else if (type == 7) // ActorMixer
+                                {
+                                    var actorMixers = new List<ActorMixer>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadActorMixerObject(objReader, actorMixers, bnkVersion, objData);
+                                    }
+                                    if (actorMixers.Count > 0)
+                                    {
+                                        parsed = actorMixers[0];
+                                        objId = actorMixers[0].SelfId;
+                                    }
+                                }
+                                else if (type == 1) // Settings
+                                {
+                                    var settings = new List<Settings>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadSettingsObject(objReader, settings, objData);
+                                    }
+                                    if (settings.Count > 0)
+                                    {
+                                        parsed = settings[0];
+                                        objId = settings[0].SelfId;
+                                    }
+                                }
+                                else if (type == 8) // AudioBus
+                                {
+                                    var audioBuses = new List<AudioBus>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadAudioBusObject(objReader, audioBuses, objData);
+                                    }
+                                    if (audioBuses.Count > 0)
+                                    {
+                                        parsed = audioBuses[0];
+                                        objId = audioBuses[0].SelfId;
+                                    }
+                                }
+                                else if (type == 9) // BlendContainer
+                                {
+                                    var blends = new List<BlendContainer>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadBlendContainerObject(objReader, blends, objData);
+                                    }
+                                    if (blends.Count > 0)
+                                    {
+                                        parsed = blends[0];
+                                        objId = blends[0].SelfId;
+                                    }
+                                }
+                                else if (type == 14) // Attenuation
+                                {
+                                    var atts = new List<Attenuation>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadAttenuationObject(objReader, atts, objData);
+                                    }
+                                    if (atts.Count > 0)
+                                    {
+                                        parsed = atts[0];
+                                        objId = atts[0].SelfId;
+                                    }
+                                }
+                                else if (type == 15) // DialogueEvent
+                                {
+                                    var dels = new List<DialogueEvent>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadDialogueEventObject(objReader, dels, objData);
+                                    }
+                                    if (dels.Count > 0)
+                                    {
+                                        parsed = dels[0];
+                                        objId = dels[0].SelfId;
+                                    }
+                                }
+                                else if (type == 16) // MotionBus
+                                {
+                                    var mbs = new List<MotionBus>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadMotionBusObject(objReader, mbs, objData);
+                                    }
+                                    if (mbs.Count > 0)
+                                    {
+                                        parsed = mbs[0];
+                                        objId = mbs[0].SelfId;
+                                    }
+                                }
+                                else if (type == 17) // MotionFx
+                                {
+                                    var mfxs = new List<MotionFx>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadMotionFxObject(objReader, mfxs, objData);
+                                    }
+                                    if (mfxs.Count > 0)
+                                    {
+                                        parsed = mfxs[0];
+                                        objId = mfxs[0].SelfId;
+                                    }
+                                }
+                                else if (type == 18) // Effect
+                                {
+                                    var effs = new List<Effect>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadEffectObject(objReader, effs, objData);
+                                    }
+                                    if (effs.Count > 0)
+                                    {
+                                        parsed = effs[0];
+                                        objId = effs[0].SelfId;
+                                    }
+                                }
+                                else if (type == 19) // AuxiliaryBus
+                                {
+                                    var auxs = new List<AuxiliaryBus>();
+                                    using (var objMs = new MemoryStream(objData))
+                                    using (var objReader = new BinaryReader(objMs))
+                                    {
+                                        BnkObjectReaders.ReadAuxiliaryBusObject(objReader, auxs, objData);
+                                    }
+                                    if (auxs.Count > 0)
+                                    {
+                                        parsed = auxs[0];
+                                        objId = auxs[0].SelfId;
                                     }
                                 }
                                 // ... handle other known types ...

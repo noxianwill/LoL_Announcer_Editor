@@ -583,11 +583,19 @@ namespace LoL_Announcer_Editor
                                 if (obj.RawData != null && obj.RawData.Length >= expectedLen)
                                     Array.Copy(obj.RawData, 5, objData, 0, obj.Length);
                                 writer.Write(objData);
-                                
+
                                 // Log original object details for comparison
                                 if (obj.ParsedObject is Sound sound)
                                 {
                                     BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] Original Sound {hircObjIndex}: SelfId={sound.SelfId}, FileId={sound.FileId}, Unknown2.Length={sound.Unknown2?.Length}, Unknown3.Length={sound.Unknown3?.Length}, RawData.Length={obj.RawData?.Length}");
+                                    // DEBUG: Log hex dump of the written data for new Sound objects
+                                    if (obj.RawData != null && obj.RawData.Length >= 21)
+                                    {
+                                        BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] [DEBUG] Sound {hircObjIndex} RawData (first 40 bytes): {BitConverter.ToString(obj.RawData, 0, Math.Min(40, obj.RawData.Length)).Replace("-", " ")}");
+                                        uint selfIdFromRaw = BitConverter.ToUInt32(obj.RawData, 5);
+                                        uint field17FromRaw = BitConverter.ToUInt32(obj.RawData, 17);
+                                        BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] [DEBUG] Sound {hircObjIndex}: RawData[5-8]={selfIdFromRaw}, RawData[17-20]={field17FromRaw}");
+                                    }
                                 }
                                 else if (obj.ParsedObject is EventAction eventAction)
                                 {
@@ -815,134 +823,77 @@ namespace LoL_Announcer_Editor
             // Handle RandomContainer objects (Type 5) - for when containers are modified
             if (obj.ParsedObject is RandomContainer randomContainer)
             {
-                BnkLogger.LogInfo($"[SerializeObject] Serializing RandomContainer: SelfId={randomContainer.SelfId}, SoundIds.Count={randomContainer.SoundIds.Count}");
+                BnkLogger.LogInfo($"[SerializeObject] Serializing RandomContainer: SelfId={randomContainer.SelfId}, SoundIdAmount={randomContainer.SoundIdAmount}, Playlist.Count={randomContainer.Playlist.Count}");
+                BnkLogger.LogInfo($"[SerializeObject] [DEBUG] RandomContainer obj.RawData={obj.RawData?.Length ?? -1}, randomContainer.RawData={randomContainer.RawData?.Length ?? -1}");
 
-                // Since we can't reliably regenerate RawData by patching (BaseParams structure is too complex),
-                // we need to use the original RawData and only patch the SoundIdAmount + SoundIds at the end.
-                // The structure is: Type (1) + Length (4) + SelfId (4) + BaseParams (variable) + 24 bytes + SoundIdAmount (4) + SoundIds (N*4)
-
-                // Calculate where SoundIdAmount should be: it's (length - 4 - N*4) bytes from the end
-                // where N is the number of Sound IDs
+                // Use the original RawData and patch only the playlist section at the end
+                // Structure: Type (1) + Length (4) + SelfId (4) + BaseParams (variable) + 24 bytes + SoundIdAmount (4) + Playlist entries (N * 12 bytes each) + trailing (4 bytes)
                 byte[] originalData = obj.RawData ?? randomContainer.RawData;
                 if (originalData == null || originalData.Length < 5)
                 {
                     BnkLogger.LogError($"[SerializeObject] RandomContainer has no RawData, cannot serialize");
                     return new byte[0];
                 }
+                BnkLogger.LogInfo($"[SerializeObject] [DEBUG] Using originalData with {originalData.Length} bytes");
 
-                // Parse the original structure to find where SoundIdAmount is
+                // Parse the original to find the playlist position by re-reading
                 using (var ms = new MemoryStream(originalData))
                 using (var reader = new BinaryReader(ms))
                 {
                     byte type = reader.ReadByte(); // Should be 5
                     uint origLength = reader.ReadUInt32();
+                    uint selfId = reader.ReadUInt32();
 
-                    // Calculate where the SoundIdAmount + SoundIds section begins
-                    // Original structure: Type (1) + Length (4) + ObjectData (origLength bytes)
-                    // ObjectData ends with: SoundIdAmount (4) + SoundIds (N*4)
-                    // So we need to find how many Sound IDs were originally there
-                    long originalSoundIdsStart = 5 + origLength - 4; // Position of last Sound ID
+                    // Skip BaseParams using the helper (same as during parsing)
+                    uint dummy;
+                    BnkBinaryHelpers.SkipBaseParams(reader, bnkVersion, out dummy);
 
-                    // Work backwards to find SoundIdAmount
-                    // We know the original had randomContainer.SoundIdAmount sound IDs (from when it was parsed)
-                    // But we need to find where that field is in the binary data
+                    // Skip the 24 bytes after BaseParams
+                    reader.BaseStream.Seek(24, SeekOrigin.Current);
 
-                    // The safest approach: copy everything except the last (4 + oldCount*4) bytes, then write new data
-                    // To find oldCount, read backwards from the end
-                    long oldSoundIdsEndPos = 5 + origLength;
+                    // Now we're at SoundIdAmount position
+                    long soundIdAmountPos = reader.BaseStream.Position;
+                    uint originalCount = reader.ReadUInt32();
 
-                    // Try to read the old count by scanning backwards
-                    // The pattern is: [BaseParams][24 bytes][SoundIdAmount (4)][SoundId1 (4)][SoundId2 (4)]...
-                    // We need to find where SoundIdAmount is
+                    // Calculate where original playlist ends (each entry is 12 bytes)
+                    long oldPlaylistEnd = soundIdAmountPos + 4 + (originalCount * 12);
+                    long bytesRemaining = originalData.Length - oldPlaylistEnd;
 
-                    // Alternative: Parse it the same way as ReadRandomContainerObject does
-                    reader.BaseStream.Position = 5; // Skip type + length
-                    reader.ReadUInt32(); // SelfId
-                    long posAfterSelfId = reader.BaseStream.Position;
+                    BnkLogger.LogInfo($"[SerializeObject] Found SoundIdAmount at position {soundIdAmountPos}, original count={originalCount}, trailing bytes={bytesRemaining}");
 
-                    // We need to skip BaseParams, but we don't know its size without fully parsing it
-                    // However, we know that after BaseParams there are exactly 24 bytes, then SoundIdAmount, then Sound IDs
-                    // And we know the total length, so: Length = (posAfterSelfId - 5) + BaseParamsSize + 24 + 4 + (Count * 4)
-                    // Therefore: BaseParamsSize = Length - (posAfterSelfId - 5) - 24 - 4 - (Count * 4)
-
-                    // But we don't know Count! Let's try a different approach:
-                    // Calculate backwards from the end: the last (4 + Count*4) bytes are SoundIdAmount + SoundIds
-                    // We need to find a Count value such that those bytes decode correctly
-
-                    // Try reading different possible count values from different positions
-                    // The structure ends with: SoundIdAmount (4 bytes) + Playlist entries (N * 12 bytes each)
-                    // Each playlist entry is: PlayID (4) + Weight (4) + RsGroupID (4) = 12 bytes
-                    // So we scan backwards trying different positions for SoundIdAmount
-                    BnkLogger.LogInfo($"[SerializeObject] Scanning for SoundIdAmount: originalData.Length={originalData.Length}, origLength={origLength}");
-                    BnkLogger.LogInfo($"[SerializeObject] Last 20 bytes (hex): {BitConverter.ToString(originalData, Math.Max(0, originalData.Length - 20))}");
-
-                    for (long testPos = originalData.Length - 4; testPos >= 5 + 4; testPos--)
+                    // Build new RawData
+                    using (var outMs = new MemoryStream())
+                    using (var writer = new BinaryWriter(outMs))
                     {
-                        reader.BaseStream.Position = testPos;
-                        uint testCount = reader.ReadUInt32();
+                        // Copy everything up to (but not including) SoundIdAmount
+                        writer.Write(originalData, 0, (int)soundIdAmountPos);
 
-                        // Verify this could be the count:
-                        // - testPos is where we're reading from
-                        // - testCount is the value at that position
-                        // - After testCount comes (testCount * 12) bytes of Playlist entries (not 4 bytes!)
-                        // - There might be trailing bytes (padding or additional fields), so allow some tolerance
-                        // - So: testPos + 4 + (testCount * 12) should be <= originalData.Length and within tolerance
-                        long expectedEnd = testPos + 4 + testCount * 12;
-                        long bytesRemaining = originalData.Length - expectedEnd;
-
-                        // Log every attempt to see what's happening
-                        if (testCount > 0 && testCount < 100)
+                        // Write new SoundIdAmount and Playlist entries
+                        writer.Write((uint)randomContainer.Playlist.Count);
+                        BnkLogger.LogInfo($"[SerializeObject] Writing SoundIdAmount={randomContainer.Playlist.Count}");
+                        foreach (var entry in randomContainer.Playlist)
                         {
-                            BnkLogger.LogInfo($"[SerializeObject] testPos={testPos}, testCount={testCount}, expectedEnd={expectedEnd}, actualEnd={originalData.Length}, bytesRemaining={bytesRemaining}");
+                            writer.Write(entry.PlayID);
+                            writer.Write(entry.Weight);
+                            writer.Write(entry.RsGroupID);
+                            BnkLogger.LogInfo($"[SerializeObject] Wrote Playlist entry: PlayID={entry.PlayID}, Weight={entry.Weight}, RsGroupID={entry.RsGroupID}");
                         }
 
-                        // Allow up to 16 trailing bytes (could be padding, additional fields, etc.)
-                        if (testCount > 0 && testCount < 100 && bytesRemaining >= 0 && bytesRemaining <= 16)
+                        // Copy any trailing bytes
+                        if (bytesRemaining > 0)
                         {
-                            // Found it! This is where SoundIdAmount is
-                            long soundIdAmountPos = testPos;
-                            long oldPlaylistEnd = testPos + 4 + (testCount * 12);
-                            BnkLogger.LogInfo($"[SerializeObject] Found SoundIdAmount at position {soundIdAmountPos}, old count={testCount}, trailing bytes={bytesRemaining}");
-
-                            // Build new RawData: copy up to SoundIdAmount, then write new count and playlist entries, then copy trailing bytes
-                            using (var outMs = new MemoryStream())
-                            using (var writer = new BinaryWriter(outMs))
-                            {
-                                // Copy everything up to (but not including) SoundIdAmount
-                                writer.Write(originalData, 0, (int)soundIdAmountPos);
-
-                                // Write new SoundIdAmount and Playlist entries (12 bytes each: PlayID + Weight + RsGroupID)
-                                writer.Write(randomContainer.SoundIdAmount);
-                                BnkLogger.LogInfo($"[SerializeObject] Writing SoundIdAmount={randomContainer.SoundIdAmount}, Playlist entries=[{string.Join(", ", randomContainer.Playlist.Select(p => $"{{PlayID={p.PlayID}, Weight={p.Weight}, RsGroupID={p.RsGroupID}}}"))}]");
-                                foreach (var entry in randomContainer.Playlist)
-                                {
-                                    writer.Write(entry.PlayID);
-                                    writer.Write(entry.Weight);
-                                    writer.Write(entry.RsGroupID);
-                                    BnkLogger.LogInfo($"[SerializeObject] Wrote Playlist entry: PlayID={entry.PlayID}, Weight={entry.Weight}, RsGroupID={entry.RsGroupID}");
-                                }
-
-                                // Copy any trailing bytes that came after the original Playlist
-                                if (bytesRemaining > 0)
-                                {
-                                    writer.Write(originalData, (int)oldPlaylistEnd, (int)bytesRemaining);
-                                    BnkLogger.LogInfo($"[SerializeObject] Copied {bytesRemaining} trailing bytes from position {oldPlaylistEnd}");
-                                }
-
-                                // Update the length field (bytes 1-4)
-                                byte[] newData = outMs.ToArray();
-                                uint newLength = (uint)(newData.Length - 5); // Exclude type byte and length field itself
-                                Array.Copy(BitConverter.GetBytes(newLength), 0, newData, 1, 4);
-
-                                BnkLogger.LogInfo($"[SerializeObject] Serialized RandomContainer: {newData.Length} bytes (old: {originalData.Length}, length field: {newLength})");
-                                return newData;
-                            }
+                            writer.Write(originalData, (int)oldPlaylistEnd, (int)bytesRemaining);
+                            BnkLogger.LogInfo($"[SerializeObject] Copied {bytesRemaining} trailing bytes from position {oldPlaylistEnd}");
                         }
+
+                        // Update the length field (bytes 1-4)
+                        byte[] newData = outMs.ToArray();
+                        uint newLength = (uint)(newData.Length - 5); // Exclude type byte and length field itself
+                        Array.Copy(BitConverter.GetBytes(newLength), 0, newData, 1, 4);
+
+                        BnkLogger.LogInfo($"[SerializeObject] Serialized RandomContainer: {newData.Length} bytes (old: {originalData.Length}, length field: {newLength})");
+                        return newData;
                     }
-
-                    // Couldn't find SoundIdAmount position - return original data unchanged
-                    BnkLogger.LogError($"[SerializeObject] Could not find SoundIdAmount position in RandomContainer RawData, returning original");
-                    return originalData;
                 }
             }
 

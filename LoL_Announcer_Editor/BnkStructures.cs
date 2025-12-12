@@ -138,6 +138,67 @@ namespace LoL_Announcer_Editor
         public byte[] RawData { get; set; }
     }
 
+    public class ActorMixer
+    {
+        public uint SelfId { get; set; }
+        public uint ParentId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
+    public class Settings
+    {
+        public uint SelfId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
+    public class AudioBus
+    {
+        public uint SelfId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
+    public class BlendContainer
+    {
+        public uint SelfId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
+    public class Attenuation
+    {
+        public uint SelfId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
+    public class DialogueEvent
+    {
+        public uint SelfId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
+    public class MotionBus
+    {
+        public uint SelfId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
+    public class MotionFx
+    {
+        public uint SelfId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
+    public class Effect
+    {
+        public uint SelfId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
+    public class AuxiliaryBus
+    {
+        public uint SelfId { get; set; }
+        public byte[] RawData { get; set; }
+    }
+
     public class BnkObjectRecord
     {
         public byte Type { get; set; }
@@ -161,6 +222,16 @@ namespace LoL_Announcer_Editor
         public List<Event> Events { get; set; } = new List<Event>();
         public List<RandomContainer> RandomContainers { get; set; } = new List<RandomContainer>();
         public List<SwitchContainer> SwitchContainers { get; set; } = new List<SwitchContainer>();
+        public List<ActorMixer> ActorMixers { get; set; } = new List<ActorMixer>();
+        public List<Settings> Settings { get; set; } = new List<Settings>();
+        public List<AudioBus> AudioBuses { get; set; } = new List<AudioBus>();
+        public List<BlendContainer> BlendContainers { get; set; } = new List<BlendContainer>();
+        public List<Attenuation> Attenuations { get; set; } = new List<Attenuation>();
+        public List<DialogueEvent> DialogueEvents { get; set; } = new List<DialogueEvent>();
+        public List<MotionBus> MotionBuses { get; set; } = new List<MotionBus>();
+        public List<MotionFx> MotionFxs { get; set; } = new List<MotionFx>();
+        public List<Effect> Effects { get; set; } = new List<Effect>();
+        public List<AuxiliaryBus> AuxiliaryBuses { get; set; } = new List<AuxiliaryBus>();
         public List<MusicContainer> MusicSegments { get; set; } = new List<MusicContainer>();
         public List<MusicTrack> MusicTracks { get; set; } = new List<MusicTrack>();
         public List<MusicSwitch> MusicSwitches { get; set; } = new List<MusicSwitch>();

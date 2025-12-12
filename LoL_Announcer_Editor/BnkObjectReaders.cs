@@ -10,6 +10,98 @@ namespace LoL_Announcer_Editor
     // For unchanged objects, RawData is the only source of truth for writing.
     public static class BnkObjectReaders
     {
+        public static bool ReadActorMixerObject(BinaryReader reader, List<ActorMixer> actorMixers, uint bnkVersion, byte[] fullObjectBytes)
+        {
+            var obj = new ActorMixer();
+            obj.SelfId = reader.ReadUInt32();
+            uint dummy;
+            obj.ParentId = BnkBinaryHelpers.SkipBaseParams(reader, bnkVersion, out dummy);
+            obj.RawData = fullObjectBytes;
+            actorMixers.Add(obj);
+            return true;
+        }
+
+        public static bool ReadSettingsObject(BinaryReader reader, List<Settings> settings, byte[] fullObjectBytes)
+        {
+            var obj = new Settings();
+            obj.SelfId = reader.ReadUInt32();
+            obj.RawData = fullObjectBytes;
+            settings.Add(obj);
+            return true;
+        }
+
+        public static bool ReadAudioBusObject(BinaryReader reader, List<AudioBus> audioBuses, byte[] fullObjectBytes)
+        {
+            var obj = new AudioBus();
+            obj.SelfId = reader.ReadUInt32();
+            obj.RawData = fullObjectBytes;
+            audioBuses.Add(obj);
+            return true;
+        }
+
+        public static bool ReadBlendContainerObject(BinaryReader reader, List<BlendContainer> blends, byte[] fullObjectBytes)
+        {
+            var obj = new BlendContainer();
+            obj.SelfId = reader.ReadUInt32();
+            obj.RawData = fullObjectBytes;
+            blends.Add(obj);
+            return true;
+        }
+
+        public static bool ReadAttenuationObject(BinaryReader reader, List<Attenuation> attenuations, byte[] fullObjectBytes)
+        {
+            var obj = new Attenuation();
+            obj.SelfId = reader.ReadUInt32();
+            obj.RawData = fullObjectBytes;
+            attenuations.Add(obj);
+            return true;
+        }
+
+        public static bool ReadDialogueEventObject(BinaryReader reader, List<DialogueEvent> dialogues, byte[] fullObjectBytes)
+        {
+            var obj = new DialogueEvent();
+            obj.SelfId = reader.ReadUInt32();
+            obj.RawData = fullObjectBytes;
+            dialogues.Add(obj);
+            return true;
+        }
+
+        public static bool ReadMotionBusObject(BinaryReader reader, List<MotionBus> motionBuses, byte[] fullObjectBytes)
+        {
+            var obj = new MotionBus();
+            obj.SelfId = reader.ReadUInt32();
+            obj.RawData = fullObjectBytes;
+            motionBuses.Add(obj);
+            return true;
+        }
+
+        public static bool ReadMotionFxObject(BinaryReader reader, List<MotionFx> motionFxs, byte[] fullObjectBytes)
+        {
+            var obj = new MotionFx();
+            obj.SelfId = reader.ReadUInt32();
+            obj.RawData = fullObjectBytes;
+            motionFxs.Add(obj);
+            return true;
+        }
+
+        public static bool ReadEffectObject(BinaryReader reader, List<Effect> effects, byte[] fullObjectBytes)
+        {
+            var obj = new Effect();
+            obj.SelfId = reader.ReadUInt32();
+            obj.RawData = fullObjectBytes;
+            effects.Add(obj);
+            return true;
+        }
+
+        public static bool ReadAuxiliaryBusObject(BinaryReader reader, List<AuxiliaryBus> auxBuses, byte[] fullObjectBytes)
+        {
+            var obj = new AuxiliaryBus();
+            obj.SelfId = reader.ReadUInt32();
+            obj.RawData = fullObjectBytes;
+            auxBuses.Add(obj);
+            return true;
+        }
+
         public static bool ReadRandomContainerObject(BinaryReader reader, List<RandomContainer> randomContainers, uint bnkVersion, byte[] fullObjectBytes)
         {
             var obj = new RandomContainer();

@@ -492,7 +492,14 @@ namespace LoL_Announcer_Editor
             var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == objectId);
             if (sound != null)
             {
-                fileIds.Add(sound.FileId);
+                if (sound.StreamFileID != 0)
+                {
+                    fileIds.Add(sound.StreamFileID);
+                }
+                else
+                {
+                    fileIds.Add(sound.FileId);
+                }
                 return fileIds;
             }
             
@@ -1777,49 +1784,18 @@ namespace LoL_Announcer_Editor
                     Data = wemData
                 };
                 
-                // Add to WPK using slot-preserving write for game compatibility
-                if (_currentWpkPath != null && _currentWemInformation != null)
+                // Do NOT write to the original WPK path here.
+                // Only update in-memory mapping; disk writes happen during Save As.
+                if (_currentWemInformation != null)
                 {
-                    try
+                    int newSlotIndex = _currentWemInformation.OriginalSlotCount;
+                    _currentWemInformation.WemIdToSlotIndex[newWemAudioData.Id] = newSlotIndex;
+                    _currentWemInformation.OriginalSlotCount++;
+                    BnkWpkLogger.LogInfo($"AddWemFile_Click: Deferred WPK write; updated slot mapping in memory - WEM {newWemAudioData.Id} -> slot {newSlotIndex}");
+                    if (_currentWpkWemFiles != null)
                     {
-                        // Build active WEM map from current WPK state
-                        var wemDataByIdForWrite = new Dictionary<uint, AudioData>();
-                        if (_currentWpkWemFiles != null)
-                        {
-                            foreach (var wem in _currentWpkWemFiles)
-                            {
-                                wemDataByIdForWrite[wem.Id] = wem;
-                            }
-                        }
-
-                        // No deletions during append
-                        var deletedWemIds = new HashSet<uint>();
-                        var newWems = new List<AudioData> { newWemAudioData };
-
-                        BnkWpkLogger.LogInfo("AddWemFile_Click: Writing WPK with slot preservation (append new slot)");
-                        Utility.WriteWpkFilePreservingSlots(
-                            wemDataByIdForWrite,
-                            _currentWemInformation.OriginalSlotCount,
-                            _currentWemInformation.WemIdToSlotIndex,
-                            deletedWemIds,
-                            newWems,
-                            _currentWpkPath,
-                            _currentWemInformation.OriginalOffsets,
-                            _currentWemInformation.SlotIndexToEntry
-                        );
-
-                        // Update in-memory slot mapping to include the new WEM at the appended slot
-                        int newSlotIndex = _currentWemInformation.OriginalSlotCount;
-                        _currentWemInformation.WemIdToSlotIndex[newWemAudioData.Id] = newSlotIndex;
-                        _currentWemInformation.OriginalSlotCount++;
-                        BnkWpkLogger.LogInfo($"AddWemFile_Click: Updated slot mapping - WEM {newWemAudioData.Id} -> slot {newSlotIndex}");
-                    }
-                    catch (Exception wpkEx)
-                    {
-                        System.Windows.MessageBox.Show($"Failed to update WPK file: {wpkEx.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        BnkWpkLogger.LogError($"AddWemFile_Click: Failed to write WPK with slot preservation: {wpkEx.Message}");
-                        BnkWpkLogger.LogOperationEnd("Add WEM File", false);
-                        return;
+                        _currentWpkWemFiles.Add(newWemAudioData);
+                        BnkWpkLogger.LogInfo($"AddWemFile_Click: Added new WEM {newWemAudioData.Id} to in-memory WPK list");
                     }
                 }
                 
@@ -2183,7 +2159,8 @@ namespace LoL_Announcer_Editor
             {
                 if (obj.ParsedObject is Sound s)
                 {
-                    if (!wemIds.Contains(s.FileId))
+                    uint candidateId = s.StreamFileID != 0 ? s.StreamFileID : s.FileId;
+                    if (!wemIds.Contains(candidateId))
                         return false;
                 }
             }
@@ -2519,32 +2496,13 @@ namespace LoL_Announcer_Editor
                     uint newSoundId = GenerateNewObjectId();
 
                     // Clone a template Sound
-                    var templateSoundObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 2 && o.RawData != null);
+                    var templateSoundObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 2 && o.RawData != null && o.ParsedObject is Sound);
                     if (templateSoundObj == null)
                     {
                         BnkLogger.LogError("AddWemToBnkStructure: No template Sound found");
                         return;
                     }
-                    byte[] soundRaw = (byte[])templateSoundObj.RawData.Clone();
 
-                    // Helper function to patch UInt32 values in binary data
-                    void PatchUInt32(byte[] arr, uint oldValue, uint newValue)
-                    {
-                        var oldBytes = BitConverter.GetBytes(oldValue);
-                        var newBytes = BitConverter.GetBytes(newValue);
-                        for (int i = 0; i < arr.Length - 3; i++)
-                        {
-                            if (arr[i] == oldBytes[0] && arr[i + 1] == oldBytes[1] && arr[i + 2] == oldBytes[2] && arr[i + 3] == oldBytes[3])
-                            {
-                                arr[i] = newBytes[0];
-                                arr[i + 1] = newBytes[1];
-                                arr[i + 2] = newBytes[2];
-                                arr[i + 3] = newBytes[3];
-                            }
-                        }
-                    }
-
-                    // Patch the Sound object
                     var templateSound = templateSoundObj.ParsedObject as Sound;
                     if (templateSound == null)
                     {
@@ -2552,50 +2510,138 @@ namespace LoL_Announcer_Editor
                         return;
                     }
 
-                    // Use the parsed StreamFileID from the template Sound object
-                    // The hardcoded offset calculation was incorrect - use the already-parsed value instead
-                    uint templateStreamFileID = templateSound.StreamFileID;
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: Template Sound - SelfId={templateSound.SelfId}, FileId={templateSound.FileId}, StreamFileID={templateSound.StreamFileID}");
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: Creating new Sound - newSoundId={newSoundId}, wemId={wemId}");
 
-                    BnkLogger.LogInfo($"AddWemToBnkStructure: Template Sound - SelfId={templateSound.SelfId}, FileId={templateSound.FileId}, StreamFileID={templateStreamFileID}");
-                    BnkLogger.LogInfo($"AddWemToBnkStructure: Patching to - newSoundId={newSoundId}, wemId={wemId}");
-                    PatchUInt32(soundRaw, templateSound.SelfId, newSoundId);
-                    PatchUInt32(soundRaw, templateSound.FileId, wemId);
-                    if (templateStreamFileID != 0)
+                    // Clone the template RawData and patch specific byte offsets
+                    byte[] soundRaw = (byte[])templateSoundObj.RawData.Clone();
+
+                    // DEBUG: Log the original template RawData in hex
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] Template Sound RawData length: {soundRaw.Length} bytes");
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] Template Sound RawData (first 60 bytes HEX): {BitConverter.ToString(soundRaw, 0, Math.Min(60, soundRaw.Length)).Replace("-", " ")}");
+
+                    // DEBUG: Parse and log what each field currently contains
+                    if (soundRaw.Length >= 21)
                     {
-                        PatchUInt32(soundRaw, templateStreamFileID, wemId);  // Patch StreamFileID
+                        byte objType = soundRaw[0];
+                        uint objLength = BitConverter.ToUInt32(soundRaw, 1);
+                        uint selfIdInRaw = BitConverter.ToUInt32(soundRaw, 5);
+                        uint field9 = BitConverter.ToUInt32(soundRaw, 9);
+                        uint field13 = BitConverter.ToUInt32(soundRaw, 13);
+                        uint field17 = BitConverter.ToUInt32(soundRaw, 17);
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] BEFORE PATCH - Offset 0 (Type): {objType}");
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] BEFORE PATCH - Offset 1-4 (Length): {objLength}");
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] BEFORE PATCH - Offset 5-8 (SelfId): {selfIdInRaw}");
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] BEFORE PATCH - Offset 9-12: {field9}");
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] BEFORE PATCH - Offset 13-16: {field13}");
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] BEFORE PATCH - Offset 17-20: {field17}");
+                        if (soundRaw.Length >= 25)
+                        {
+                            uint field21 = BitConverter.ToUInt32(soundRaw, 21);
+                            BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] BEFORE PATCH - Offset 21-24: {field21}");
+                        }
+                        if (soundRaw.Length >= 29)
+                        {
+                            uint field25 = BitConverter.ToUInt32(soundRaw, 25);
+                            BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] BEFORE PATCH - Offset 25-28: {field25}");
+                        }
+                        if (soundRaw.Length >= 33)
+                        {
+                            uint field29 = BitConverter.ToUInt32(soundRaw, 29);
+                            BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] BEFORE PATCH - Offset 29-32: {field29}");
+                        }
                     }
 
-                    // Parse the new Sound object
+                    // Patch SelfId at offset 5
+                    Array.Copy(BitConverter.GetBytes(newSoundId), 0, soundRaw, 5, 4);
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: Patched SelfId at offset 5: {newSoundId}");
+
+                    // Sound RawData structure for BNK version > 0x70:
+                    // Offset 0: Type (1 byte)
+                    // Offset 1-4: Length (4 bytes)
+                    // Offset 5-8: SelfId (4 bytes)
+                    // Offset 9-12: Unknown1 (4 bytes)
+                    // Offset 13: IsStreamed (1 byte)
+                    // Offset 14-17: FileId (4 bytes) <- C# software reads THIS as WEM reference!
+                    // Offset 18+: Extended fields (reserved0, streamSourceType, streamFileID, etc.)
+
+                    // Patch FileId at offset 14 - THIS IS WHAT THE C# SOFTWARE USES!
+                    // C# parser reads: SelfId(5-8) + Unknown1(9-12) + IsStreamed(13) + FileId(14-17)
+                    if (soundRaw.Length > 18)
+                    {
+                        uint oldValueAt14 = BitConverter.ToUInt32(soundRaw, 14);
+                        Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 14, 4);
+                        uint newValueAt14 = BitConverter.ToUInt32(soundRaw, 14);
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: Patched FileId at offset 14: {oldValueAt14} -> {newValueAt14} (expected: {wemId})");
+                    }
+
+                    // Also patch StreamFileID at offset 17 - THIS IS WHAT PYTHON PARSER / BNK-EXTRACT USES!
+                    // Python parser reads object data starting AFTER SelfId (at RawData offset 9):
+                    // b[0:4]=reserved0, b[4:8]=streamSourceType, b[8:12]=streamFileID
+                    // So streamFileID = RawData offset 9 + 8 = 17
+                    if (soundRaw.Length > 21)
+                    {
+                        uint oldValueAt17 = BitConverter.ToUInt32(soundRaw, 17);
+                        Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 17, 4);
+                        uint newValueAt17 = BitConverter.ToUInt32(soundRaw, 17);
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: Patched StreamFileID at offset 17: {oldValueAt17} -> {newValueAt17} (expected: {wemId})");
+                    }
+
+                    // DEBUG: Log the patched RawData
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] AFTER PATCH - RawData (first 60 bytes HEX): {BitConverter.ToString(soundRaw, 0, Math.Min(60, soundRaw.Length)).Replace("-", " ")}");
+                    if (soundRaw.Length >= 21)
+                    {
+                        uint selfIdAfter = BitConverter.ToUInt32(soundRaw, 5);
+                        uint fileIdAfter = BitConverter.ToUInt32(soundRaw, 14);
+                        uint streamFileIdAfter = BitConverter.ToUInt32(soundRaw, 17);
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] AFTER PATCH - Offset 5-8 (SelfId): {selfIdAfter}");
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] AFTER PATCH - Offset 14-17 (FileId for C#): {fileIdAfter}");
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] AFTER PATCH - Offset 17-20 (StreamFileID for Python): {streamFileIdAfter}");
+                    }
+
+                    // Create the new Sound object with cloned RawData
                     var newSound = new Sound
                     {
                         SelfId = newSoundId,
                         Unknown1 = templateSound.Unknown1,
                         IsStreamed = templateSound.IsStreamed,
-                        Unknown2 = templateSound.Unknown2,
-                        Unknown3 = templateSound.Unknown3,
+                        Unknown2 = templateSound.Unknown2 != null ? (byte[])templateSound.Unknown2.Clone() : new byte[0],
+                        Unknown3 = templateSound.Unknown3 != null ? (byte[])templateSound.Unknown3.Clone() : new byte[0],
                         FileId = wemId,
-                        StreamFileID = wemId,  // CRITICAL: Set StreamFileID for announcer/voice sounds
+                        StreamFileID = wemId,
                         Reserved0 = templateSound.Reserved0,
                         StreamSourceType = templateSound.StreamSourceType,
                         StreamSourceID = templateSound.StreamSourceID,
+                        StreamFileOffset = templateSound.StreamFileOffset,
+                        StreamFileLength = templateSound.StreamFileLength,
                         SoundType = templateSound.SoundType,
                         SoundStructure = templateSound.SoundStructure,
                         RawData = soundRaw
                     };
 
-                    // Add the new Sound object
+                    // Add the new Sound object - use RawData (IsChanged = false) since we patched it correctly
                     _fullFidelityBnk.AllObjectsInOrder.Add(new BnkObjectRecord
                     {
                         Type = 2,
-                        Length = (uint)soundRaw.Length - 5, // Length doesn't include type byte and length field
+                        Length = (uint)(soundRaw.Length - 5), // Length doesn't include type byte and length field
                         RawData = soundRaw,
                         ParsedObject = newSound,
-                        IsChanged = false,
+                        IsChanged = false,  // Use patched RawData
                         ObjectId = newSoundId
                     });
 
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: Created new Sound object with ID {newSoundId} referencing WEM {wemId}");
+
                     // Update the RandomContainer to include the new Sound (preserve EventAction → Container)
                     var randomContainer = randomContainerObj.ParsedObject as RandomContainer;
+
+                    // DEBUG: Log RandomContainer state before modification
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] RandomContainer BEFORE - SelfId={randomContainer.SelfId}, SoundIdAmount={randomContainer.SoundIdAmount}, Playlist.Count={randomContainer.Playlist.Count}");
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] RandomContainer BEFORE - RawData length={randomContainerObj.RawData?.Length ?? -1}, IsChanged={randomContainerObj.IsChanged}");
+                    for (int i = 0; i < randomContainer.Playlist.Count && i < 5; i++)
+                    {
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] RandomContainer BEFORE - Playlist[{i}]: PlayID={randomContainer.Playlist[i].PlayID}, Weight={randomContainer.Playlist[i].Weight}");
+                    }
 
                     // Use weight/rsGroupID from first existing entry for consistency
                     uint defaultWeight = randomContainer.Playlist.Count > 0 ? randomContainer.Playlist[0].Weight : 1448017921u;
@@ -2607,7 +2653,16 @@ namespace LoL_Announcer_Editor
                     randomContainer.SoundIdAmount = (uint)randomContainer.Playlist.Count;
                     randomContainerObj.IsChanged = true;
 
+                    // DEBUG: Log RandomContainer state after modification
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] RandomContainer AFTER - SelfId={randomContainer.SelfId}, SoundIdAmount={randomContainer.SoundIdAmount}, Playlist.Count={randomContainer.Playlist.Count}");
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] RandomContainer AFTER - IsChanged={randomContainerObj.IsChanged}");
+                    for (int i = 0; i < randomContainer.Playlist.Count; i++)
+                    {
+                        BnkLogger.LogInfo($"AddWemToBnkStructure: [DEBUG] RandomContainer AFTER - Playlist[{i}]: PlayID={randomContainer.Playlist[i].PlayID}, Weight={randomContainer.Playlist[i].Weight}");
+                    }
+
                     BnkWpkLogger.LogInfo($"AddWemToBnkStructure: Added Sound {newSoundId} to RandomContainer {randomContainer.SelfId} (weight={defaultWeight}, rsGroupID={defaultRsGroupID})");
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: RandomContainer {randomContainer.SelfId} now has {randomContainer.Playlist.Count} entries in playlist");
                 }
                 else
                 {
@@ -2617,31 +2672,12 @@ namespace LoL_Announcer_Editor
                     uint newSoundId = GenerateNewObjectId();
                     uint newEventActionId = GenerateNewObjectId();
 
-                    var templateSoundObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 2 && o.RawData != null);
-                    var templateEventActionObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 3 && o.RawData != null);
+                    var templateSoundObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 2 && o.RawData != null && o.ParsedObject is Sound);
+                    var templateEventActionObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 3 && o.RawData != null && o.ParsedObject is EventAction);
                     if (templateSoundObj == null || templateEventActionObj == null)
                     {
                         BnkLogger.LogError("AddWemToBnkStructure: No template Sound or EventAction found");
                         return;
-                    }
-
-                    byte[] soundRaw = (byte[])templateSoundObj.RawData.Clone();
-                    byte[] eventActionRaw = (byte[])templateEventActionObj.RawData.Clone();
-
-                    void PatchUInt32(byte[] arr, uint oldValue, uint newValue)
-                    {
-                        var oldBytes = BitConverter.GetBytes(oldValue);
-                        var newBytes = BitConverter.GetBytes(newValue);
-                        for (int i = 0; i < arr.Length - 3; i++)
-                        {
-                            if (arr[i] == oldBytes[0] && arr[i + 1] == oldBytes[1] && arr[i + 2] == oldBytes[2] && arr[i + 3] == oldBytes[3])
-                            {
-                                arr[i] = newBytes[0];
-                                arr[i + 1] = newBytes[1];
-                                arr[i + 2] = newBytes[2];
-                                arr[i + 3] = newBytes[3];
-                            }
-                        }
                     }
 
                     var templateSound = templateSoundObj.ParsedObject as Sound;
@@ -2652,40 +2688,70 @@ namespace LoL_Announcer_Editor
                         return;
                     }
 
-                    // Use the parsed StreamFileID from the template Sound object
-                    // The hardcoded offset calculation was incorrect - use the already-parsed value instead
-                    uint templateStreamFileID = templateSound.StreamFileID;
+                    BnkLogger.LogInfo($"AddWemToBnkStructure (Event path): Template Sound - SelfId={templateSound.SelfId}, FileId={templateSound.FileId}, StreamFileID={templateSound.StreamFileID}");
+                    BnkLogger.LogInfo($"AddWemToBnkStructure (Event path): Creating new Sound - newSoundId={newSoundId}, wemId={wemId}");
 
-                    BnkLogger.LogInfo($"AddWemToBnkStructure (Event path): Template Sound - SelfId={templateSound.SelfId}, FileId={templateSound.FileId}, StreamFileID={templateStreamFileID}");
-                    BnkLogger.LogInfo($"AddWemToBnkStructure (Event path): Patching to - newSoundId={newSoundId}, wemId={wemId}");
-                    PatchUInt32(soundRaw, templateSound.SelfId, newSoundId);
-                    PatchUInt32(soundRaw, templateSound.FileId, wemId);
-                    if (templateStreamFileID != 0)
+                    // Clone the template RawData and patch specific byte offsets for Sound
+                    byte[] soundRaw = (byte[])templateSoundObj.RawData.Clone();
+
+                    // Sound RawData structure for BNK version > 0x70:
+                    // Offset 0: Type (1 byte)
+                    // Offset 1-4: Length (4 bytes)
+                    // Offset 5-8: SelfId (4 bytes)
+                    // Offset 9-12: Unknown1 (4 bytes)
+                    // Offset 13: IsStreamed (1 byte)
+                    // Offset 14-17: FileId (4 bytes) <- C# software reads THIS as WEM reference!
+                    // Offset 18+: Extended fields (reserved0, streamSourceType, streamFileID, etc.)
+
+                    // Patch SelfId at offset 5
+                    Array.Copy(BitConverter.GetBytes(newSoundId), 0, soundRaw, 5, 4);
+                    BnkLogger.LogInfo($"AddWemToBnkStructure (Event path): Patched Sound SelfId at offset 5: {newSoundId}");
+
+                    // Patch FileId at offset 14 - THIS IS WHAT THE C# SOFTWARE USES!
+                    if (soundRaw.Length > 18)
                     {
-                        PatchUInt32(soundRaw, templateStreamFileID, wemId);  // Patch StreamFileID
+                        Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 14, 4);
+                        BnkLogger.LogInfo($"AddWemToBnkStructure (Event path): Patched Sound FileId at offset 14: {wemId}");
                     }
-                    PatchUInt32(eventActionRaw, templateEventAction.SelfId, newEventActionId);
-                    PatchUInt32(eventActionRaw, templateEventAction.SoundObjectId, newSoundId);
 
-                    // Parse the new Sound object
+                    // Also patch StreamFileID at offset 17 (for Python parser/bnk-extract compatibility)
+                    if (soundRaw.Length > 21)
+                    {
+                        Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 17, 4);
+                        BnkLogger.LogInfo($"AddWemToBnkStructure (Event path): Patched Sound StreamFileID at offset 17: {wemId}");
+                    }
+
+                    // Clone the template RawData and patch specific byte offsets for EventAction
+                    byte[] eventActionRaw = (byte[])templateEventActionObj.RawData.Clone();
+
+                    // EventAction structure: Type (1) + Length (4) + SelfId (4) + Scope (1) + Type (1) + SoundObjectId (4) + ...
+                    // Patch SelfId at offset 5
+                    Array.Copy(BitConverter.GetBytes(newEventActionId), 0, eventActionRaw, 5, 4);
+                    BnkLogger.LogInfo($"AddWemToBnkStructure (Event path): Patched EventAction SelfId at offset 5: {newEventActionId}");
+
+                    // Patch SoundObjectId at offset 11 (after Type(1) + Length(4) + SelfId(4) + Scope(1) + Type(1))
+                    Array.Copy(BitConverter.GetBytes(newSoundId), 0, eventActionRaw, 11, 4);
+                    BnkLogger.LogInfo($"AddWemToBnkStructure (Event path): Patched EventAction SoundObjectId at offset 11: {newSoundId}");
+
                     var newSound = new Sound
                     {
                         SelfId = newSoundId,
                         Unknown1 = templateSound.Unknown1,
                         IsStreamed = templateSound.IsStreamed,
-                        Unknown2 = templateSound.Unknown2,
-                        Unknown3 = templateSound.Unknown3,
+                        Unknown2 = templateSound.Unknown2 != null ? (byte[])templateSound.Unknown2.Clone() : new byte[0],
+                        Unknown3 = templateSound.Unknown3 != null ? (byte[])templateSound.Unknown3.Clone() : new byte[0],
                         FileId = wemId,
-                        StreamFileID = wemId,  // CRITICAL: Set StreamFileID for announcer/voice sounds
+                        StreamFileID = wemId,
                         Reserved0 = templateSound.Reserved0,
                         StreamSourceType = templateSound.StreamSourceType,
                         StreamSourceID = templateSound.StreamSourceID,
+                        StreamFileOffset = templateSound.StreamFileOffset,
+                        StreamFileLength = templateSound.StreamFileLength,
                         SoundType = templateSound.SoundType,
                         SoundStructure = templateSound.SoundStructure,
                         RawData = soundRaw
                     };
 
-                    // Parse the new EventAction object
                     var newEventAction = new EventAction
                     {
                         SelfId = newEventActionId,
@@ -2696,46 +2762,36 @@ namespace LoL_Announcer_Editor
                         RawData = eventActionRaw
                     };
 
+                    // Add Sound with patched RawData
                     _fullFidelityBnk.AllObjectsInOrder.Add(new BnkObjectRecord
                     {
                         Type = 2,
-                        Length = (uint)soundRaw.Length - 5, // Length doesn't include type byte and length field
+                        Length = (uint)(soundRaw.Length - 5),
                         RawData = soundRaw,
                         ParsedObject = newSound,
-                        IsChanged = false,
+                        IsChanged = false,  // Use patched RawData
                         ObjectId = newSoundId
                     });
+
+                    // Add EventAction with patched RawData
                     _fullFidelityBnk.AllObjectsInOrder.Add(new BnkObjectRecord
                     {
                         Type = 3,
-                        Length = (uint)eventActionRaw.Length - 5, // Length doesn't include type byte and length field
+                        Length = (uint)(eventActionRaw.Length - 5),
                         RawData = eventActionRaw,
                         ParsedObject = newEventAction,
-                        IsChanged = false,
+                        IsChanged = false,  // Use patched RawData
                         ObjectId = newEventActionId
                     });
+
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: Created new Sound {newSoundId} and EventAction {newEventActionId}");
 
                     // Update the existing event to reference the new EventAction
                     eventObj.EventIds.Add(newEventActionId);
                     eventObj.EventAmount = (byte)eventObj.EventIds.Count;
                     targetEvent.IsChanged = true;
 
-                    // Update the event's RawData
-                    using (var ms = new MemoryStream())
-                    using (var writer = new BinaryWriter(ms))
-                    {
-                        writer.Write((byte)4);
-                        uint eventLength = (uint)(4 + 1 + eventObj.EventIds.Count * 4);
-                        writer.Write(eventLength);
-                        writer.Write(eventObj.SelfId);
-                        writer.Write(eventObj.EventAmount);
-                        foreach (var eventId in eventObj.EventIds)
-                        {
-                            writer.Write(eventId);
-                        }
-                        targetEvent.RawData = ms.ToArray();
-                        targetEvent.Length = eventLength;
-                    }
+                    BnkLogger.LogInfo($"AddWemToBnkStructure: Updated Event {eventObj.SelfId} to include EventAction {newEventActionId}");
                 }
 
                 BnkLogger.LogInfo($"AddWemToBnkStructure: SUCCESS - WEM {wemId} added to event '{eventName}'");
