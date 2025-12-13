@@ -104,6 +104,7 @@ namespace LoL_Announcer_Editor
             ScenarioLogger.StartScenario("CLI Parse/Add/Save");
             try
             {
+                string originalBin = GetOption(args, "-originalbin");
                 string originalWpk = GetOption(args, "-originalwpk");
                 string originalBnk = GetOption(args, "-originalbnk");
                 string addWemPath = GetOption(args, "-addwem");
@@ -111,16 +112,32 @@ namespace LoL_Announcer_Editor
                 string saveWpk = GetOption(args, "-savewpk");
                 string saveBnk = GetOption(args, "-savebnk");
 
-                if (string.IsNullOrWhiteSpace(originalWpk) || string.IsNullOrWhiteSpace(originalBnk) || string.IsNullOrWhiteSpace(addWemPath) || string.IsNullOrWhiteSpace(toEvent) || string.IsNullOrWhiteSpace(saveWpk) || string.IsNullOrWhiteSpace(saveBnk))
+                if (string.IsNullOrWhiteSpace(originalBin) || string.IsNullOrWhiteSpace(originalWpk) || string.IsNullOrWhiteSpace(originalBnk) || string.IsNullOrWhiteSpace(addWemPath) || string.IsNullOrWhiteSpace(toEvent) || string.IsNullOrWhiteSpace(saveWpk) || string.IsNullOrWhiteSpace(saveBnk))
                 {
-                    ScenarioLogger.LogError("Missing required CLI options");
+                    ScenarioLogger.LogError("Missing required CLI options. Required: -originalbin -originalwpk -originalbnk -addwem -toevent -savewpk -savebnk");
                     ScenarioLogger.EndScenario(false);
                     return true;
                 }
 
                 ScenarioLogger.LogSection("Parse Original");
+                ScenarioLogger.LogInfo($"Original BIN: {originalBin}");
                 ScenarioLogger.LogInfo($"Original WPK: {originalWpk}");
                 ScenarioLogger.LogInfo($"Original BNK: {originalBnk}");
+
+                // Parse BIN file for event name to ID mapping
+                var stringHashes = BinUtils.ParseBinFile(originalBin);
+                if (stringHashes == null)
+                {
+                    ScenarioLogger.LogError("Failed to parse BIN file");
+                    ScenarioLogger.EndScenario(false);
+                    return true;
+                }
+                var eventNameLookup = new Dictionary<uint, string>();
+                foreach (var sh in stringHashes)
+                {
+                    eventNameLookup[sh.Hash] = sh.String;
+                }
+                ScenarioLogger.LogInfo($"Parsed {stringHashes.Count} event names from BIN file");
 
                 var sections = new BNKSections();
                 var fullFidelity = new BnkFullFidelity();
@@ -134,7 +151,7 @@ namespace LoL_Announcer_Editor
 
                 var originalEventIds = new HashSet<uint>();
                 foreach (var ev in sections.Events) originalEventIds.Add(ev.SelfId);
-                var wemInfo = WpkExtractor.ParseWpkFile(originalWpk, new List<StringHash>(), originalEventIds);
+                var wemInfo = WpkExtractor.ParseWpkFile(originalWpk, stringHashes, originalEventIds);
                 if (wemInfo == null)
                 {
                     ScenarioLogger.LogError("Failed to parse original WPK");
@@ -301,12 +318,13 @@ namespace LoL_Announcer_Editor
                     };
                     fullFidelity.AllObjectsInOrder.Add(new BnkObjectRecord { Type = 2, Length = (uint)(soundRaw.Length - 5), RawData = soundRaw, ParsedObject = newSound, IsChanged = false, ObjectId = newSoundId });
                     var rc = rcObj.ParsedObject as RandomContainer;
-                    uint defaultWeight = rc.Playlist.Count > 0 ? rc.Playlist[0].Weight : 1448017921u;
-                    uint defaultRsGroupID = rc.Playlist.Count > 0 ? rc.Playlist[0].RsGroupID : 3276806263u;
-                    rc.Playlist.Add(new PlaylistEntry { PlayID = newSoundId, Weight = defaultWeight, RsGroupID = defaultRsGroupID });
+                    // Playlist format is just Sound IDs (4 bytes each), not 12-byte entries
                     rc.SoundIds.Add(newSoundId);
-                    rc.SoundIdAmount = (uint)rc.Playlist.Count;
+                    rc.SoundIdAmount = (uint)rc.SoundIds.Count;
+                    // Also add to Playlist for compatibility (but only PlayID matters)
+                    rc.Playlist.Add(new PlaylistEntry { PlayID = newSoundId, Weight = 50000, RsGroupID = 0 });
                     rcObj.IsChanged = true;
+                    ScenarioLogger.LogInfo($"Added Sound {newSoundId} to container {rc.SelfId}, now has {rc.SoundIds.Count} sounds");
                     return true;
                 }
                 else

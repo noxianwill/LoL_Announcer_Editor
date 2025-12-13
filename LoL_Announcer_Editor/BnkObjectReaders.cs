@@ -111,22 +111,24 @@ namespace LoL_Announcer_Editor
             reader.BaseStream.Seek(24, SeekOrigin.Current);
             obj.SoundIdAmount = reader.ReadUInt32();
 
-            // Read full 12-byte playlist entries (playID + weight + rsGroupID)
+            // Playlist format: just 4-byte Sound IDs (not 12-byte entries)
+            // The original format was misinterpreted - playlist is simply N x uint32 Sound IDs
             for (int i = 0; i < obj.SoundIdAmount; i++)
             {
+                uint soundId = reader.ReadUInt32();
                 var entry = new PlaylistEntry
                 {
-                    PlayID = reader.ReadUInt32(),
-                    Weight = reader.ReadUInt32(),
-                    RsGroupID = reader.ReadUInt32()
+                    PlayID = soundId,
+                    Weight = 50000,     // Default weight
+                    RsGroupID = 0       // Not used in this format
                 };
                 obj.Playlist.Add(entry);
-                obj.SoundIds.Add(entry.PlayID);  // Maintain backward compatibility
+                obj.SoundIds.Add(soundId);
             }
 
             obj.RawData = fullObjectBytes;
             randomContainers.Add(obj);
-            BnkLogger.LogInfo($"[DEBUG] Parsed RandomContainer: SelfId={obj.SelfId}, SoundIdAmount={obj.SoundIdAmount}, Playlist entries=[{string.Join(", ", obj.Playlist.Select(p => $"{{PlayID={p.PlayID}, Weight={p.Weight}, RsGroupID={p.RsGroupID}}}"))}]");
+            BnkLogger.LogInfo($"[DEBUG] Parsed RandomContainer: SelfId={obj.SelfId}, SoundIdAmount={obj.SoundIdAmount}, SoundIds=[{string.Join(", ", obj.SoundIds)}]");
             return true;
         }
 

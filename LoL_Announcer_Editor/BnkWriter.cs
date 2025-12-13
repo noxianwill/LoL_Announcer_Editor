@@ -823,11 +823,11 @@ namespace LoL_Announcer_Editor
             // Handle RandomContainer objects (Type 5) - for when containers are modified
             if (obj.ParsedObject is RandomContainer randomContainer)
             {
-                BnkLogger.LogInfo($"[SerializeObject] Serializing RandomContainer: SelfId={randomContainer.SelfId}, SoundIdAmount={randomContainer.SoundIdAmount}, Playlist.Count={randomContainer.Playlist.Count}");
+                BnkLogger.LogInfo($"[SerializeObject] Serializing RandomContainer: SelfId={randomContainer.SelfId}, SoundIdAmount={randomContainer.SoundIdAmount}, SoundIds.Count={randomContainer.SoundIds.Count}");
                 BnkLogger.LogInfo($"[SerializeObject] [DEBUG] RandomContainer obj.RawData={obj.RawData?.Length ?? -1}, randomContainer.RawData={randomContainer.RawData?.Length ?? -1}");
 
                 // Use the original RawData and patch only the playlist section at the end
-                // Structure: Type (1) + Length (4) + SelfId (4) + BaseParams (variable) + 24 bytes + SoundIdAmount (4) + Playlist entries (N * 12 bytes each) + trailing (4 bytes)
+                // Structure: Type (1) + Length (4) + SelfId (4) + BaseParams (variable) + 24 bytes + SoundIdAmount (4) + Sound IDs (N * 4 bytes each)
                 byte[] originalData = obj.RawData ?? randomContainer.RawData;
                 if (originalData == null || originalData.Length < 5)
                 {
@@ -855,8 +855,8 @@ namespace LoL_Announcer_Editor
                     long soundIdAmountPos = reader.BaseStream.Position;
                     uint originalCount = reader.ReadUInt32();
 
-                    // Calculate where original playlist ends (each entry is 12 bytes)
-                    long oldPlaylistEnd = soundIdAmountPos + 4 + (originalCount * 12);
+                    // Playlist is just 4 bytes per Sound ID (not 12 bytes!)
+                    long oldPlaylistEnd = soundIdAmountPos + 4 + (originalCount * 4);
                     long bytesRemaining = originalData.Length - oldPlaylistEnd;
 
                     BnkLogger.LogInfo($"[SerializeObject] Found SoundIdAmount at position {soundIdAmountPos}, original count={originalCount}, trailing bytes={bytesRemaining}");
@@ -868,15 +868,13 @@ namespace LoL_Announcer_Editor
                         // Copy everything up to (but not including) SoundIdAmount
                         writer.Write(originalData, 0, (int)soundIdAmountPos);
 
-                        // Write new SoundIdAmount and Playlist entries
-                        writer.Write((uint)randomContainer.Playlist.Count);
-                        BnkLogger.LogInfo($"[SerializeObject] Writing SoundIdAmount={randomContainer.Playlist.Count}");
-                        foreach (var entry in randomContainer.Playlist)
+                        // Write new SoundIdAmount and Sound IDs (4 bytes each, not 12!)
+                        writer.Write((uint)randomContainer.SoundIds.Count);
+                        BnkLogger.LogInfo($"[SerializeObject] Writing SoundIdAmount={randomContainer.SoundIds.Count}");
+                        foreach (var soundId in randomContainer.SoundIds)
                         {
-                            writer.Write(entry.PlayID);
-                            writer.Write(entry.Weight);
-                            writer.Write(entry.RsGroupID);
-                            BnkLogger.LogInfo($"[SerializeObject] Wrote Playlist entry: PlayID={entry.PlayID}, Weight={entry.Weight}, RsGroupID={entry.RsGroupID}");
+                            writer.Write(soundId);
+                            BnkLogger.LogInfo($"[SerializeObject] Wrote Sound ID: {soundId}");
                         }
 
                         // Copy any trailing bytes
