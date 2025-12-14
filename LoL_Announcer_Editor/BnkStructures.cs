@@ -121,10 +121,15 @@ namespace LoL_Announcer_Editor
     {
         public uint SelfId { get; set; }
         public uint SwitchContainerId { get; set; }
-        public uint SoundIdAmount { get; set; }
-        public List<uint> SoundIds { get; set; } = new List<uint>();  // Kept for backward compatibility
-        public List<PlaylistEntry> Playlist { get; set; } = new List<PlaylistEntry>();  // Actual 12-byte structure
+        public uint SoundIdAmount { get; set; }  // Kept for backward compatibility (= PlaylistLength)
+        public List<uint> SoundIds { get; set; } = new List<uint>();  // Kept for backward compatibility (= PlayIDs from Playlist)
+        public List<PlaylistEntry> Playlist { get; set; } = new List<PlaylistEntry>();  // Actual 8-byte structure (playID + weight)
         public byte[] RawData { get; set; }
+
+        // New fields for proper parsing (matching Python parser)
+        public uint ChildrenCount { get; set; }  // ulNumChilds (u32)
+        public List<uint> ChildrenIds { get; set; } = new List<uint>();  // pChildren array
+        public ushort PlaylistLength { get; set; }  // ulPlayListItem (u16)
     }
 
     public class SwitchContainer

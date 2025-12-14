@@ -73,7 +73,6 @@ namespace LoL_Announcer_Editor
                 uint sectionLength = SkipToSection(reader, "DIDX", false, out long didxSectionOffset, out List<string> sectionLog);
                 if (sectionLength == 0)
                 {
-                    Defs.LogError($"BNK parse error: DIDX section not found. Sections encountered: {string.Join(", ", sectionLog)}");
                     return false;
                 }
                 int entryCount = (int)sectionLength / 12;
@@ -90,7 +89,6 @@ namespace LoL_Announcer_Editor
                 sectionLength = SkipToSection(reader, "DATA", false, out long dataSectionOffset, out sectionLog);
                 if (sectionLength == 0)
                 {
-                    Defs.LogError($"BNK parse error: DATA section not found. Sections encountered: {string.Join(", ", sectionLog)}");
                     return false;
                 }
                 long dataOffset = reader.BaseStream.Position;
@@ -102,9 +100,8 @@ namespace LoL_Announcer_Editor
                 bnkfile.Length = bnkfile.Entries.Count;
                 return true;
             }
-            catch (Exception ex)
+            catch
             {
-                Defs.LogError($"Exception in ParseBnkFileEntries: {ex}");
                 return false;
             }
         }

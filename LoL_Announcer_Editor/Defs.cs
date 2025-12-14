@@ -15,48 +15,17 @@ namespace LoL_Announcer_Editor
         public static int VERBOSE = 0;
         public static TextWriter ConsolelessStderr = Console.Error;
 
-        private static readonly string LogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "lol_announcer_editor_logs.txt");
-        private static readonly object LogLock = new object();
-
-        public static void LogError(string message)
-        {
-            lock (LogLock)
-            {
-                File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [ERROR] {message}\n");
-            }
-        }
-
-        public static void LogWarning(string message)
-        {
-            lock (LogLock)
-            {
-                File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [WARN] {message}\n");
-            }
-        }
-
         public static void EPrintf(string format, params object[] args)
         {
             var writer = ConsolelessStderr ?? Console.Error;
             string msg = string.Format(format, args);
             writer.Write(msg);
-            LogError(msg);
-        }
-
-        public static void LogDebug(string message)
-        {
-#if DEBUG
-            lock (LogLock)
-            {
-                File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [DEBUG] {message}\n");
-            }
-#endif
         }
 
 #if DEBUG
         public static void DPrintf(string format, params object[] args)
         {
             Console.Write(format, args);
-            LogDebug(string.Format(format, args));
         }
 #else
         public static void DPrintf(string format, params object[] args) { }
@@ -66,26 +35,6 @@ namespace LoL_Announcer_Editor
         {
             if (VERBOSE >= level)
                 Console.Write(format, args);
-        }
-
-        public static void LogAction(string message)
-        {
-            lock (LogLock)
-            {
-                File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [INFO] {message}\n");
-            }
-        }
-
-        public static void LogApplicationStart()
-        {
-            lock (LogLock)
-            {
-                string header = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [STARTUP] ========================================\n";
-                header += $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [STARTUP] LoL Announcer Editor Application Started\n";
-                header += $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [STARTUP] Version: {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version}\n";
-                header += $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [STARTUP] ========================================\n";
-                File.AppendAllText(LogPath, header);
-            }
         }
 
         // Converter for string to Visibility

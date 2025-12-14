@@ -59,8 +59,6 @@ namespace LoL_Announcer_Editor
             // Update UI to reflect defaults
             chkPlayOnClick.IsChecked = SettingsManager.PlayOnClick;
             chkExtractOgg.IsChecked = SettingsManager.ExtractOgg;
-            
-            Defs.LogAction("Settings reset to defaults in UI");
         }
     }
 } 

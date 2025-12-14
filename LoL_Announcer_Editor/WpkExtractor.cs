@@ -27,12 +27,11 @@ namespace LoL_Announcer_Editor
     {
         public static WemInformation? ParseWpkFile(string wpkPath, List<StringHash> stringHashes, HashSet<uint>? bnkEventIds = null)
         {
-            Defs.LogAction($"Parsing WPK file: {wpkPath}");
-            Defs.LogAction($"Looking for {stringHashes.Count} string hashes in WPK file");
-            
+            WemAdditionLogger.LogSection($"ParseWpkFile: {wpkPath}");
             if (!File.Exists(wpkPath))
             {
                 Defs.EPrintf($"Error: Failed to open \"{wpkPath}\".\n");
+                WemAdditionLogger.Log($"ERROR: WPK file not found: {wpkPath}");
                 return null;
             }
             var wpkfile = new WpkFile
@@ -53,18 +52,11 @@ namespace LoL_Announcer_Editor
                     throw new InvalidDataException("Not a WPK file.");
                 wpkfile.Version = reader.ReadUInt32();
                 wpkfile.FileCount = reader.ReadUInt32();
-                ScenarioLogger.LogInfo($"[WPK Header] version={wpkfile.Version}, declaredCount={wpkfile.FileCount}");
 
                 // Parse offsets
                 for (int i = 0; i < wpkfile.FileCount; i++)
                     wpkfile.Offsets.Add(reader.ReadUInt32());
                 wpkfile.OffsetAmount = wpkfile.FileCount;
-                int firstNonZero = -1;
-                for (int oi = 0; oi < wpkfile.Offsets.Count; oi++)
-                {
-                    if (wpkfile.Offsets[oi] != 0) { firstNonZero = oi; break; }
-                }
-                ScenarioLogger.LogInfo($"[WPK Offsets] totalSlots={wpkfile.OffsetAmount}, firstNonZeroIndex={firstNonZero}");
 
                 // Parse data
                 int realFileCount = 0;
@@ -85,7 +77,6 @@ namespace LoL_Announcer_Editor
                         long fileLen = reader.BaseStream.Length;
                         reader.BaseStream.Seek(wpkfile.Offsets[i], SeekOrigin.Begin);
                         long headerPos = reader.BaseStream.Position;
-                        ScenarioLogger.LogInfo($"[WPK Entry Begin] slot={i}, offset={wpkfile.Offsets[i]}, headerPos={headerPos}, fileLen={fileLen}");
                         var entry = new WpkFileEntry
                         {
                             DataOffset = reader.ReadUInt32(),
@@ -96,13 +87,11 @@ namespace LoL_Announcer_Editor
                         int filenameSize = reader.ReadInt32();
                         if (filenameSize < 0)
                         {
-                            ScenarioLogger.LogError($"[WPK Entry] slot={i} invalid nameSize={filenameSize} at headerPos={headerPos}");
                             throw new InvalidDataException("Invalid WPK header (negative nameSize)");
                         }
                         long nameEndCandidate = headerPos + 12 + (filenameSize * 2L);
                         if (nameEndCandidate > fileLen)
                         {
-                            ScenarioLogger.LogError($"[WPK Entry] slot={i} nameEnd({nameEndCandidate}) > fileLen({fileLen}), nameSize={filenameSize}, headerPos={headerPos}");
                             throw new EndOfStreamException("WPK header name exceeds file length");
                         }
                         var filenameBytes = new List<byte>(filenameSize);
@@ -114,37 +103,23 @@ namespace LoL_Announcer_Editor
                         entry.Filename = Encoding.ASCII.GetString(filenameBytes.ToArray());
 
                         long afterNamePos = reader.BaseStream.Position;
-                        ScenarioLogger.LogInfo($"[WPK Entry] slot={i}, headerPos={headerPos}, dataOffset={entry.DataOffset}, dataLength={entry.DataLength}, nameSize={filenameSize}, afterNamePos={afterNamePos}, fileLen={fileLen}");
-
-                        if (entry.DataOffset < afterNamePos)
-                        {
-                            ScenarioLogger.LogWarning($"[WPK Entry] slot={i} dataOffset({entry.DataOffset}) < afterNamePos({afterNamePos})");
-                        }
-                        long dataEnd = (long)entry.DataOffset + entry.DataLength;
-                        if (dataEnd > fileLen)
-                        {
-                            ScenarioLogger.LogWarning($"[WPK Entry] slot={i} dataEnd({dataEnd}) exceeds fileLen({fileLen})");
-                        }
 
                         entry.Data = new byte[entry.DataLength];
                         reader.BaseStream.Seek(entry.DataOffset, SeekOrigin.Begin);
                         int bytesRead = reader.Read(entry.Data, 0, (int)entry.DataLength);
                         if (bytesRead != entry.DataLength)
                         {
-                            ScenarioLogger.LogError($"[WPK Entry] slot={i} data read mismatch: expected={entry.DataLength}, read={bytesRead}, fileLen={fileLen}");
                             throw new InvalidDataException("Failed to read WEM data.");
                         }
                         wpkfile.Entries.Add(entry);
                         reader.BaseStream.Seek(afterNamePos, SeekOrigin.Begin);
                     }
-                    catch (EndOfStreamException eos)
+                    catch (EndOfStreamException)
                     {
-                        ScenarioLogger.LogError($"[WPK Entry] slot={i} EndOfStream: {eos.Message}; offset={wpkfile.Offsets[i]}");
                         throw;
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
-                        ScenarioLogger.LogError($"[WPK Entry] slot={i} exception: {ex.Message}");
                         throw;
                     }
                 }
@@ -158,8 +133,6 @@ namespace LoL_Announcer_Editor
                 OriginalOffsets = new List<uint>(wpkfile.Offsets),
                 SlotIndexToEntry = new Dictionary<int, WpkFileEntry>()
             };
-
-            Defs.LogAction($"WPK contains {wpkfile.Entries.Count} total files in {wpkfile.OffsetAmount} slots");
 
             // Build slot index mapping - track which slot each WEM was in
             int entryIndex = 0;
@@ -177,27 +150,20 @@ namespace LoL_Announcer_Editor
                     if (uint.TryParse(filenameWithoutExt, out uint wemId))
                     {
                         wemInformation.WemIdToSlotIndex[wemId] = slotIndex;
-                        Defs.LogAction($"WPK slot mapping: WEM {wemId} -> slot {slotIndex}");
                     }
                     entryIndex++;
-                }
-                else
-                {
-                    Defs.LogAction($"WPK slot {slotIndex} is empty (zero offset)");
                 }
             }
 
             foreach (var entry in wpkfile.Entries)
             {
-                Defs.LogAction($"WPK entry: filename='{entry.Filename}', size={entry.DataLength}");
-                
                 // Strip .wem extension if present
                 string filenameWithoutExt = entry.Filename;
                 if (filenameWithoutExt.EndsWith(".wem", StringComparison.OrdinalIgnoreCase))
                 {
                     filenameWithoutExt = filenameWithoutExt.Substring(0, filenameWithoutExt.Length - 4);
                 }
-                
+
                 if (uint.TryParse(filenameWithoutExt, out uint wemId))
                 {
                     wemInformation.SortedWemDataList.Add(new AudioData
@@ -206,33 +172,24 @@ namespace LoL_Announcer_Editor
                         Length = entry.DataLength,
                         Data = entry.Data
                     });
-                    Defs.LogAction($"  -> Added as WEM file with ID: {wemId}");
-                }
-                else
-                {
-                    Defs.LogAction($"  -> Skipped (not a numeric filename)");
                 }
             }
             wemInformation.SortedWemDataList.Sort((a, b) => a.Id.CompareTo(b.Id));
-            
-            Defs.LogAction($"Found {wemInformation.SortedWemDataList.Count} audio files in WPK");
-            
-            // Log the first 10 file IDs found in WPK
-            for (int i = 0; i < Math.Min(10, wemInformation.SortedWemDataList.Count); i++)
+
+            WemAdditionLogger.Log($"WPK parsed: {wemInformation.SortedWemDataList.Count} WEM files found");
+            foreach (var wem in wemInformation.SortedWemDataList)
             {
-                Defs.LogAction($"WPK file[{i}]: ID={wemInformation.SortedWemDataList[i].Id}, Size={wemInformation.SortedWemDataList[i].Length}");
+                WemAdditionLogger.Log($"  WEM Id={wem.Id}, Length={wem.Length}");
             }
-            
+
             wemInformation.GroupedWems = GroupWems(wemInformation.SortedWemDataList, stringHashes);
             return wemInformation;
         }
 
         public static List<StringWithChildren> GroupWems(List<AudioData> wemDataList, List<StringHash> stringHashes)
         {
-            Defs.LogAction($"GroupWems: Looking for {stringHashes.Count} string hashes in {wemDataList.Count} WPK files");
             var result = new List<StringWithChildren>();
             var eventMap = new Dictionary<string, StringWithChildren>();
-            int matchesFound = 0;
             for (int i = 0; i < stringHashes.Count; i++)
             {
                 var currentEvent = stringHashes[i];
@@ -241,8 +198,6 @@ namespace LoL_Announcer_Editor
                     if (currentEvent.Hash == wemDataList[j].Id)
                     {
                         var currentWem = wemDataList[j];
-                        Defs.LogAction($"MATCH FOUND: Hash {currentEvent.Hash} (string: {currentEvent.String}) matches WPK file ID {currentWem.Id}");
-                        matchesFound++;
                         if (!eventMap.TryGetValue(currentEvent.String, out var group))
                         {
                             group = new StringWithChildren { String = currentEvent.String };
@@ -253,8 +208,7 @@ namespace LoL_Announcer_Editor
                     }
                 }
             }
-            Defs.LogAction($"GroupWems: Found {matchesFound} matches out of {stringHashes.Count} string hashes");
             return result;
         }
     }
-} 
+}

@@ -15,11 +15,8 @@ namespace LoL_Announcer_Editor
 
         public static void Initialize()
         {
-            BnkLogger.LogInfo("[DEBUG] ReferenceSoundMapper.Initialize() called");
-            
             if (_isInitialized)
             {
-                BnkLogger.LogInfo("[DEBUG] ReferenceSoundMapper already initialized, skipping");
                 return;
             }
 
@@ -28,15 +25,11 @@ namespace LoL_Announcer_Editor
 
             try
             {
-                BnkLogger.LogInfo($"[DEBUG] Loading reference data from: {_referenceJsonPath}");
                 LoadReferenceData();
                 _isInitialized = true;
-                BnkLogger.LogInfo($"[INFO] ReferenceSoundMapper initialized with {_originalStreamFileIDs.Count} Sound mappings");
             }
-            catch (Exception ex)
+            catch
             {
-                BnkLogger.LogInfo($"[ERROR] Failed to initialize ReferenceSoundMapper: {ex.Message}");
-                BnkLogger.LogInfo($"[ERROR] Stack trace: {ex.StackTrace}");
                 // Fall back to default values if reference file is not available
                 InitializeDefaultMappings();
                 _isInitialized = true;
@@ -55,7 +48,7 @@ namespace LoL_Announcer_Editor
             {
                 foreach (JsonElement element in document.RootElement.EnumerateArray())
                 {
-                    if (element.TryGetProperty("id", out JsonElement idElement) && 
+                    if (element.TryGetProperty("id", out JsonElement idElement) &&
                         idElement.GetString() == "HIRC")
                     {
                         if (element.TryGetProperty("data", out JsonElement dataElement) &&
@@ -83,7 +76,6 @@ namespace LoL_Announcer_Editor
                 // Extract Sound ID
                 if (!soundElement.TryGetProperty("id", out JsonElement idElement))
                 {
-                    BnkLogger.LogInfo("[WARNING] Sound object missing ID, skipping");
                     return;
                 }
 
@@ -92,7 +84,6 @@ namespace LoL_Announcer_Editor
                 // Extract data section
                 if (!soundElement.TryGetProperty("data", out JsonElement dataElement))
                 {
-                    BnkLogger.LogInfo($"[WARNING] Sound {soundId} missing data section, skipping");
                     return;
                 }
 
@@ -130,12 +121,10 @@ namespace LoL_Announcer_Editor
 
                     _originalSoundStructures[soundId] = soundStructure;
                 }
-
-                BnkLogger.LogInfo($"[DEBUG] Mapped Sound {soundId}: StreamFileID={_originalStreamFileIDs.GetValueOrDefault(soundId)}, PluginID={_originalSoundStructures.GetValueOrDefault(soundId)?.PluginID}");
             }
-            catch (Exception ex)
+            catch
             {
-                BnkLogger.LogInfo($"[ERROR] Failed to process Sound object: {ex.Message}");
+                // Failed to process Sound object, silently ignore
             }
         }
 
@@ -229,26 +218,24 @@ namespace LoL_Announcer_Editor
         public static uint GetOriginalStreamFileID(uint soundId)
         {
             Initialize();
-            
+
             if (_originalStreamFileIDs.TryGetValue(soundId, out uint originalID))
             {
                 return originalID;
             }
 
-            BnkLogger.LogInfo($"[WARNING] No original streamFileID mapping found for Sound {soundId}, using default");
             return _originalStreamFileIDs.Values.FirstOrDefault(); // Return first available value as default
         }
 
         public static SoundStructure GetOriginalSoundStructure(uint soundId)
         {
             Initialize();
-            
+
             if (_originalSoundStructures.TryGetValue(soundId, out SoundStructure originalStructure))
             {
                 return originalStructure;
             }
 
-            BnkLogger.LogInfo($"[WARNING] No original SoundStructure mapping found for Sound {soundId}, using default");
             return _originalSoundStructures.Values.FirstOrDefault(); // Return first available structure as default
         }
 
@@ -264,4 +251,4 @@ namespace LoL_Announcer_Editor
             return _originalStreamFileIDs.Count;
         }
     }
-} 
+}

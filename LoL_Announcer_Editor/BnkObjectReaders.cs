@@ -105,30 +105,47 @@ namespace LoL_Announcer_Editor
         public static bool ReadRandomContainerObject(BinaryReader reader, List<RandomContainer> randomContainers, uint bnkVersion, byte[] fullObjectBytes)
         {
             var obj = new RandomContainer();
+            long startPos = reader.BaseStream.Position;
             obj.SelfId = reader.ReadUInt32();
             uint dummy;
             obj.SwitchContainerId = BnkBinaryHelpers.SkipBaseParams(reader, bnkVersion, out dummy);
-            reader.BaseStream.Seek(24, SeekOrigin.Current);
-            obj.SoundIdAmount = reader.ReadUInt32();
 
-            // Playlist format: just 4-byte Sound IDs (not 12-byte entries)
-            // The original format was misinterpreted - playlist is simply N x uint32 Sound IDs
-            for (int i = 0; i < obj.SoundIdAmount; i++)
+            // According to Python parser (parse_hirc_sequence_container):
+            // After NodeBaseParams comes:
+            // - sLoopCount (u16), sLoopModMin (u16), sLoopModMax (u16) = 6 bytes
+            // - fTransitionTime (f32), fTransitionTimeModMin (f32), fTransitionTimeModMax (f32) = 12 bytes
+            // - wAvoidRepeatCount (u16), eTransitionMode (u8), eRandomMode (u8), eMode (u8), _bIsUsingWeight (u8) = 6 bytes
+            // Total = 24 bytes (matches the original Seek(24))
+            reader.BaseStream.Seek(24, SeekOrigin.Current);
+
+            // Then: ulNumChilds (u32) + children array (N * u32)
+            obj.ChildrenCount = reader.ReadUInt32();
+            for (int i = 0; i < obj.ChildrenCount; i++)
             {
-                uint soundId = reader.ReadUInt32();
+                obj.ChildrenIds.Add(reader.ReadUInt32());
+            }
+
+            // Then: ulPlayListItem (u16) - playlist length as u16, NOT u32!
+            obj.PlaylistLength = reader.ReadUInt16();
+            obj.SoundIdAmount = obj.PlaylistLength; // Keep backward compatibility
+
+            // Playlist format: 8 bytes per entry (ulPlayID: u32 + Weight: u32)
+            for (int i = 0; i < obj.PlaylistLength; i++)
+            {
+                uint playId = reader.ReadUInt32();
+                uint weight = reader.ReadUInt32();
                 var entry = new PlaylistEntry
                 {
-                    PlayID = soundId,
-                    Weight = 50000,     // Default weight
+                    PlayID = playId,
+                    Weight = weight,
                     RsGroupID = 0       // Not used in this format
                 };
                 obj.Playlist.Add(entry);
-                obj.SoundIds.Add(soundId);
+                obj.SoundIds.Add(playId);  // Keep backward compatibility
             }
 
             obj.RawData = fullObjectBytes;
             randomContainers.Add(obj);
-            BnkLogger.LogInfo($"[DEBUG] Parsed RandomContainer: SelfId={obj.SelfId}, SoundIdAmount={obj.SoundIdAmount}, SoundIds=[{string.Join(", ", obj.SoundIds)}]");
             return true;
         }
 
@@ -222,9 +239,8 @@ namespace LoL_Announcer_Editor
                     obj.SoundStructure.NonCachable = (sourceBits & 0x08) != 0;
                     obj.SoundStructure.HasSource = (sourceBits & 0x80) != 0;
                 }
-                catch (Exception ex)
+                catch
                 {
-                    BnkLogger.LogWarning($"[ReadSoundObject] Failed to parse SoundStructure for Sound {obj.SelfId}: {ex.Message}. Remaining bytes: {remainingBytes}");
                     // Continue without SoundStructure - the object will just have basic fields
                 }
             }
@@ -275,7 +291,6 @@ namespace LoL_Announcer_Editor
                 obj.EventIds.Add(reader.ReadUInt32());
             obj.RawData = fullObjectBytes;
             events.Add(obj);
-            BnkLogger.LogInfo($"[DEBUG] Parsed Event: SelfId={obj.SelfId}, EventAmount={obj.EventAmount}, EventIds=[{string.Join(", ", obj.EventIds)}]");
             return true;
         }
 

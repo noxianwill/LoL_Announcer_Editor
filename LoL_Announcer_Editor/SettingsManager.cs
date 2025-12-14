@@ -34,23 +34,16 @@ namespace LoL_Announcer_Editor
                 {
                     string json = File.ReadAllText(SettingsFilePath);
                     var settings = JsonSerializer.Deserialize<SettingsData>(json);
-                    
+
                     if (settings != null)
                     {
                         PlayOnClick = settings.PlayOnClick;
                         ExtractOgg = settings.ExtractOgg;
                     }
-                    
-                    Defs.LogAction($"Settings loaded from {SettingsFilePath}");
-                }
-                else
-                {
-                    Defs.LogAction("Settings file not found, using default values");
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Defs.LogError($"Failed to load settings: {ex.Message}");
                 // Keep default values on error
             }
         }
@@ -73,17 +66,15 @@ namespace LoL_Announcer_Editor
                     ExtractOgg = ExtractOgg
                 };
 
-                string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions 
-                { 
-                    WriteIndented = true 
+                string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
+                {
+                    WriteIndented = true
                 });
                 File.WriteAllText(SettingsFilePath, json);
-                
-                Defs.LogAction($"Settings saved to {SettingsFilePath}");
             }
-            catch (Exception ex)
+            catch
             {
-                Defs.LogError($"Failed to save settings: {ex.Message}");
+                // Silently fail
             }
         }
 
@@ -97,7 +88,6 @@ namespace LoL_Announcer_Editor
                 PlayOnClick = PlayOnClick,
                 ExtractOgg = ExtractOgg
             };
-            Defs.LogAction("Settings backed up");
         }
 
         public static void RestoreSettings()
@@ -106,7 +96,6 @@ namespace LoL_Announcer_Editor
             {
                 PlayOnClick = _backupSettings.PlayOnClick;
                 ExtractOgg = _backupSettings.ExtractOgg;
-                Defs.LogAction("Settings restored from backup");
             }
         }
 
@@ -115,7 +104,6 @@ namespace LoL_Announcer_Editor
         {
             PlayOnClick = true;
             ExtractOgg = false;
-            Defs.LogAction("Settings reset to defaults");
         }
     }
-} 
+}

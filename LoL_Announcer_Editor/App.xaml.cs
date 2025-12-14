@@ -18,13 +18,11 @@ namespace LoL_Announcer_Editor
         {
             // Set up assembly resolution to prevent LoadFrom errors
             AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
-            
+
             // Set up global exception handlers
             this.DispatcherUnhandledException += App_DispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
             TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
-            
-            Defs.LogApplicationStart();
         }
 
         protected override void OnStartup(StartupEventArgs e)
@@ -37,9 +35,8 @@ namespace LoL_Announcer_Editor
                     return;
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                LogError(ex);
                 Shutdown();
                 return;
             }
@@ -48,51 +45,24 @@ namespace LoL_Announcer_Editor
 
         private Assembly? CurrentDomain_AssemblyResolve(object? sender, ResolveEventArgs args)
         {
-            try
-            {
-                // Try to resolve missing assemblies gracefully
-                Defs.LogAction($"Assembly resolve requested for: {args.Name}");
-                return null; // Let the default resolver handle it
-            }
-            catch (Exception ex)
-            {
-                LogError(ex);
-                return null;
-            }
+            // Let the default resolver handle it
+            return null;
         }
 
         private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
         {
-            LogError(e.Exception);
             MessageBox.Show("An unexpected error occurred:\n" + e.Exception.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             e.Handled = true;
         }
 
         private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
-            LogError(e.ExceptionObject as Exception);
+            // Unhandled exception - nothing to do without logging
         }
 
         private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
         {
-            LogError(e.Exception);
             e.SetObserved();
-        }
-
-        private void LogError(Exception? ex)
-        {
-            try
-            {
-                if (ex == null) return;
-                string logEntry = $"{ex.GetType().Name}: {ex.Message}";
-                if (!string.IsNullOrEmpty(ex.StackTrace))
-                {
-                    logEntry += $"\nStackTrace: {ex.StackTrace}";
-                }
-                logEntry += "\n--------------------------------------------------";
-                Defs.LogError(logEntry);
-            }
-            catch { }
         }
 
         private bool HandleCli(string[] args)
@@ -101,7 +71,6 @@ namespace LoL_Announcer_Editor
             var argset = new HashSet<string>(args.Select(a => a.ToLowerInvariant()));
             if (!argset.Contains("-parse")) return false;
 
-            ScenarioLogger.StartScenario("CLI Parse/Add/Save");
             try
             {
                 string originalBin = GetOption(args, "-originalbin");
@@ -114,22 +83,13 @@ namespace LoL_Announcer_Editor
 
                 if (string.IsNullOrWhiteSpace(originalBin) || string.IsNullOrWhiteSpace(originalWpk) || string.IsNullOrWhiteSpace(originalBnk) || string.IsNullOrWhiteSpace(addWemPath) || string.IsNullOrWhiteSpace(toEvent) || string.IsNullOrWhiteSpace(saveWpk) || string.IsNullOrWhiteSpace(saveBnk))
                 {
-                    ScenarioLogger.LogError("Missing required CLI options. Required: -originalbin -originalwpk -originalbnk -addwem -toevent -savewpk -savebnk");
-                    ScenarioLogger.EndScenario(false);
                     return true;
                 }
-
-                ScenarioLogger.LogSection("Parse Original");
-                ScenarioLogger.LogInfo($"Original BIN: {originalBin}");
-                ScenarioLogger.LogInfo($"Original WPK: {originalWpk}");
-                ScenarioLogger.LogInfo($"Original BNK: {originalBnk}");
 
                 // Parse BIN file for event name to ID mapping
                 var stringHashes = BinUtils.ParseBinFile(originalBin);
                 if (stringHashes == null)
                 {
-                    ScenarioLogger.LogError("Failed to parse BIN file");
-                    ScenarioLogger.EndScenario(false);
                     return true;
                 }
                 var eventNameLookup = new Dictionary<uint, string>();
@@ -137,15 +97,12 @@ namespace LoL_Announcer_Editor
                 {
                     eventNameLookup[sh.Hash] = sh.String;
                 }
-                ScenarioLogger.LogInfo($"Parsed {stringHashes.Count} event names from BIN file");
 
                 var sections = new BNKSections();
                 var fullFidelity = new BnkFullFidelity();
                 bool bnkOk = BnkExtractor.ParseEventBnkFile_FullFidelity(originalBnk, fullFidelity, sections);
                 if (!bnkOk)
                 {
-                    ScenarioLogger.LogError("Failed to parse original BNK");
-                    ScenarioLogger.EndScenario(false);
                     return true;
                 }
 
@@ -154,34 +111,23 @@ namespace LoL_Announcer_Editor
                 var wemInfo = WpkExtractor.ParseWpkFile(originalWpk, stringHashes, originalEventIds);
                 if (wemInfo == null)
                 {
-                    ScenarioLogger.LogError("Failed to parse original WPK");
-                    ScenarioLogger.EndScenario(false);
                     return true;
                 }
-                ScenarioLogger.LogFileSize("Original BNK", originalBnk);
-                ScenarioLogger.LogFileSize("Original WPK", originalWpk);
 
-                ScenarioLogger.LogSection("Add WEM");
                 uint wemId = ExtractWemId(addWemPath);
                 byte[] wemBytes = File.ReadAllBytes(addWemPath);
-                ScenarioLogger.LogInfo($"WEM ID: {wemId}, size: {wemBytes.Length} bytes");
 
                 uint targetEventId = ResolveEventId(toEvent);
                 if (targetEventId == 0)
                 {
-                    ScenarioLogger.LogError($"Unable to resolve event: {toEvent}");
-                    ScenarioLogger.EndScenario(false);
                     return true;
                 }
                 bool addOk = AddWemToBnk_FullFidelity(fullFidelity, targetEventId, wemId, null);
                 if (!addOk)
                 {
-                    ScenarioLogger.LogError("Failed to add WEM to BNK structure");
-                    ScenarioLogger.EndScenario(false);
                     return true;
                 }
 
-                ScenarioLogger.LogSection("Save WPK");
                 var wemDataById = wemInfo.SortedWemDataList.ToDictionary(w => w.Id, w => w);
                 var deletedIds = new HashSet<uint>();
                 var newWems = new List<AudioData> { new AudioData { Id = wemId, Length = (uint)wemBytes.Length, Data = wemBytes } };
@@ -194,35 +140,25 @@ namespace LoL_Announcer_Editor
                     saveWpk,
                     wemInfo.OriginalOffsets,
                     wemInfo.SlotIndexToEntry);
-                ScenarioLogger.LogFileSize("Saved WPK", saveWpk);
 
-                ScenarioLogger.LogSection("Save BNK");
                 bool writeBnk = BnkWriter.WriteBnkFile_FullFidelity(fullFidelity, saveBnk);
                 if (!writeBnk)
                 {
-                    ScenarioLogger.LogError("Failed to write BNK");
-                    ScenarioLogger.EndScenario(false);
                     return true;
                 }
-                ScenarioLogger.LogFileSize("Saved BNK", saveBnk);
 
-                ScenarioLogger.LogSection("Re-Parse Custom");
+                // Re-parse to validate
                 var testSections = new BNKSections();
                 var testFf = new BnkFullFidelity();
-                bool reBnkOk = BnkExtractor.ParseEventBnkFile_FullFidelity(saveBnk, testFf, testSections);
+                BnkExtractor.ParseEventBnkFile_FullFidelity(saveBnk, testFf, testSections);
                 var customEventIds = new HashSet<uint>();
                 foreach (var ev in testSections.Events) customEventIds.Add(ev.SelfId);
-                var reWemInfo = WpkExtractor.ParseWpkFile(saveWpk, new List<StringHash>(), customEventIds);
-                ScenarioLogger.LogInfo($"Re-parse BNK ok: {reBnkOk}, Re-parse WPK ok: {reWemInfo != null}");
+                WpkExtractor.ParseWpkFile(saveWpk, new List<StringHash>(), customEventIds);
 
-                ScenarioLogger.EndScenario(true);
                 return true;
             }
-            catch (Exception ex)
+            catch
             {
-                LogError(ex);
-                ScenarioLogger.LogError(ex.Message);
-                ScenarioLogger.EndScenario(false);
                 return true;
             }
         }
@@ -254,9 +190,30 @@ namespace LoL_Announcer_Editor
         {
             try
             {
-                if (fullFidelity == null || fullFidelity.AllObjectsInOrder == null) return false;
+                WemAdditionLogger.LogSection($"AddWemToBnk_FullFidelity: eventId={eventId}, wemId={wemId}");
+                if (fullFidelity == null || fullFidelity.AllObjectsInOrder == null)
+                {
+                    WemAdditionLogger.Log("ERROR: fullFidelity is null or has no objects");
+                    return false;
+                }
+                WemAdditionLogger.Log($"Total objects in BNK: {fullFidelity.AllObjectsInOrder.Count}");
+
+                // Log all events available
+                var allEvents = fullFidelity.AllObjectsInOrder.Where(o => o.Type == 4 && o.ParsedObject is Event).ToList();
+                WemAdditionLogger.Log($"Available events in BNK: {allEvents.Count}");
+                foreach (var ev in allEvents)
+                {
+                    var evParsed = ev.ParsedObject as Event;
+                    if (evParsed != null)
+                        WemAdditionLogger.Log($"  Event SelfId={evParsed.SelfId}");
+                }
+
                 var evtObj = fullFidelity.AllObjectsInOrder.FirstOrDefault(o => o.Type == 4 && o.ParsedObject is Event e && e.SelfId == eventId);
-                if (evtObj == null) return false;
+                if (evtObj == null)
+                {
+                    WemAdditionLogger.Log($"ERROR: Event with id {eventId} not found in BNK");
+                    return false;
+                }
                 var evt = evtObj.ParsedObject as Event;
                 if (evt == null) return false;
                 uint eaId = 0;
@@ -294,10 +251,11 @@ namespace LoL_Announcer_Editor
                     if (templateSound == null) return false;
                     byte[] soundRaw = (byte[])templateSoundObj.RawData.Clone();
                     Array.Copy(BitConverter.GetBytes(newSoundId), 0, soundRaw, 5, 4);
+                    // Patch sourceID at offset 14 (after type+length+selfid+pluginid+streamtype)
+                    // Sound structure: Type(1) + Length(4) + SelfId(4) + PluginID(4) + StreamType(1) + sourceID(4)
                     if (soundRaw.Length > 18)
                         Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 14, 4);
-                    if (soundRaw.Length > 21)
-                        Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 17, 4);
+                    // NOTE: Do NOT patch offset 17 - it would corrupt sourceID!
                     var newSound = new Sound
                     {
                         SelfId = newSoundId,
@@ -316,15 +274,17 @@ namespace LoL_Announcer_Editor
                         SoundStructure = templateSound.SoundStructure,
                         RawData = soundRaw
                     };
+                    // Use IsChanged=false to use the patched RawData directly (serialization is broken for this BNK format)
                     fullFidelity.AllObjectsInOrder.Add(new BnkObjectRecord { Type = 2, Length = (uint)(soundRaw.Length - 5), RawData = soundRaw, ParsedObject = newSound, IsChanged = false, ObjectId = newSoundId });
                     var rc = rcObj.ParsedObject as RandomContainer;
-                    // Playlist format is just Sound IDs (4 bytes each), not 12-byte entries
-                    rc.SoundIds.Add(newSoundId);
+                    // Playlist format is 8 bytes per entry (playID: u32 + weight: u32)
+                    // Use weight from first existing entry for consistency, or default to 50000
+                    uint defaultWeight = rc.Playlist.Count > 0 ? rc.Playlist[0].Weight : 50000;
+                    rc.Playlist.Add(new PlaylistEntry { PlayID = newSoundId, Weight = defaultWeight, RsGroupID = 0 });
+                    rc.SoundIds.Add(newSoundId);  // Keep backward compatibility
                     rc.SoundIdAmount = (uint)rc.SoundIds.Count;
-                    // Also add to Playlist for compatibility (but only PlayID matters)
-                    rc.Playlist.Add(new PlaylistEntry { PlayID = newSoundId, Weight = 50000, RsGroupID = 0 });
+                    rc.PlaylistLength = (ushort)rc.Playlist.Count;  // Update PlaylistLength
                     rcObj.IsChanged = true;
-                    ScenarioLogger.LogInfo($"Added Sound {newSoundId} to container {rc.SelfId}, now has {rc.SoundIds.Count} sounds");
                     return true;
                 }
                 else
@@ -339,10 +299,11 @@ namespace LoL_Announcer_Editor
                     if (templateSound == null || templateEventAction == null) return false;
                     byte[] soundRaw = (byte[])templateSoundObj.RawData.Clone();
                     Array.Copy(BitConverter.GetBytes(newSoundId), 0, soundRaw, 5, 4);
+                    // Patch sourceID at offset 14 (after type+length+selfid+pluginid+streamtype)
+                    // Sound structure: Type(1) + Length(4) + SelfId(4) + PluginID(4) + StreamType(1) + sourceID(4)
                     if (soundRaw.Length > 18)
                         Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 14, 4);
-                    if (soundRaw.Length > 21)
-                        Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 17, 4);
+                    // NOTE: Do NOT patch offset 17 - it would corrupt sourceID!
                     var newSound = new Sound
                     {
                         SelfId = newSoundId,
@@ -361,6 +322,7 @@ namespace LoL_Announcer_Editor
                         SoundStructure = templateSound.SoundStructure,
                         RawData = soundRaw
                     };
+                    // Use IsChanged=false to use the patched RawData directly (serialization is broken for this BNK format)
                     fullFidelity.AllObjectsInOrder.Add(new BnkObjectRecord { Type = 2, Length = (uint)(soundRaw.Length - 5), RawData = soundRaw, ParsedObject = newSound, IsChanged = false, ObjectId = newSoundId });
                     byte[] eaRaw = (byte[])templateEventActionObj.RawData.Clone();
                     Array.Copy(BitConverter.GetBytes(newEventActionId), 0, eaRaw, 5, 4);

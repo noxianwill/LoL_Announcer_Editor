@@ -52,8 +52,6 @@ namespace LoL_Announcer_Editor
             Dictionary<int, WpkFileEntry>? slotIndexToEntry = null) // Optional: original entry headers per slot
         {
             const int clamp = 8;
-            BnkWpkLogger.LogOperationStart("Write WPK File (Preserving Slots)");
-            BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Starting with {originalSlotCount} slots, {deletedWemIds.Count} deleted, {newWemFiles.Count} new");
 
             int totalSlots = originalSlotCount + newWemFiles.Count;
 
@@ -70,20 +68,17 @@ namespace LoL_Announcer_Editor
                 // Write header: "r3d2" magic, version 1, slot count
                 writer.Write(Encoding.ASCII.GetBytes("r3d2\x01\x00\x00\x00"));
                 writer.Write(totalSlots);
-                BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Wrote header with {totalSlots} slots");
 
                 // Reserve space for offset table
                 long offsetTableStart = wpkFile.Position;
                 wpkFile.Position += totalSlots * 4;
                 wpkFile.Position += DiffToClamp((int)wpkFile.Position, clamp);
-                BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Reserved offset table at {offsetTableStart}, length={totalSlots * 4}");
 
                 int maxWrittenPos = (int)wpkFile.Position;
                 int maxDataEnd = (int)wpkFile.Position;
 
                 if (originalOffsets != null && slotIndexToEntry != null)
                 {
-                    BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Using preserved layout: originalOffsets={originalOffsets.Count}, slotHeaders={slotIndexToEntry.Count}, wemIdMap={wemIdToSlotIndex.Count}");
                     for (int slotIndex = 0; slotIndex < originalSlotCount; slotIndex++)
                     {
                         uint wemIdForSlot = 0;
@@ -98,38 +93,22 @@ namespace LoL_Announcer_Editor
                         if (wemIdForSlot == 0 || deletedWemIds.Contains(wemIdForSlot))
                         {
                             entryOffsets[slotIndex] = 0;
-                            if (wemIdForSlot == 0)
-                            {
-                                BnkWpkLogger.LogWarning($"WriteWpkFilePreservingSlots: Slot {slotIndex}: no mapped WEM id, originalOffset={(originalOffsets.Count > slotIndex ? originalOffsets[slotIndex] : 0)}");
-                                ScenarioLogger.LogWarning($"Slot {slotIndex}: no mapped WEM id");
-                            }
-                            else
-                            {
-                                BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Slot {slotIndex}: WEM {wemIdForSlot} marked deleted -> zero offset");
-                                ScenarioLogger.LogInfo($"Slot {slotIndex}: deleted WEM {wemIdForSlot}");
-                            }
                             continue;
                         }
                         if (!slotIndexToEntry.TryGetValue(slotIndex, out var entry))
                         {
                             entryOffsets[slotIndex] = 0;
-                            BnkWpkLogger.LogWarning($"WriteWpkFilePreservingSlots: Slot {slotIndex}: missing original entry header -> zero offset");
-                            ScenarioLogger.LogWarning($"Slot {slotIndex}: missing original header");
                             continue;
                         }
                         if (!wemDataById.TryGetValue(wemIdForSlot, out var audioData))
                         {
                             entryOffsets[slotIndex] = 0;
-                            BnkWpkLogger.LogWarning($"WriteWpkFilePreservingSlots: Slot {slotIndex}: missing audio data for WEM {wemIdForSlot} -> zero offset");
-                            ScenarioLogger.LogWarning($"Slot {slotIndex}: missing audio for WEM {wemIdForSlot}");
                             continue;
                         }
 
                         if (slotIndex >= originalOffsets.Count || originalOffsets[slotIndex] == 0)
                         {
                             entryOffsets[slotIndex] = 0;
-                            BnkWpkLogger.LogWarning($"WriteWpkFilePreservingSlots: Slot {slotIndex}: no original offset available -> zero offset");
-                            ScenarioLogger.LogWarning($"Slot {slotIndex}: no original offset");
                             continue;
                         }
 
@@ -155,7 +134,6 @@ namespace LoL_Announcer_Editor
 
                         maxWrittenPos = Math.Max(maxWrittenPos, afterNamePos);
                         maxDataEnd = Math.Max(maxDataEnd, unchecked((int)(entry.DataOffset + audioData.Data.Length)));
-                        BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Slot {slotIndex}: PRESERVED WEM {wemIdForSlot}, headerPos={headerPos}, afterNamePos={afterNamePos}, dataOffset={entry.DataOffset}, dataEnd={dataEndPos}, size={audioData.Data.Length}");
                     }
                 }
                 else
@@ -246,16 +224,18 @@ namespace LoL_Announcer_Editor
                         nextOffset = ClampInt(dataOffsetFix + audioData.Data.Length, clamp);
                         maxWrittenPos = Math.Max(maxWrittenPos, afterNamePosFix);
                         maxDataEnd = Math.Max(maxDataEnd, dataEndPosFix);
-                        BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Slot {slotIndex}: REPAIRED HEADER for WEM {wemIdForSlot}, headerPos={entryOffset}, afterNamePos={afterNamePosFix}, dataOffset={dataOffsetFix}, dataEnd={dataEndPosFix}, size={audioData.Data.Length}");
-                        ScenarioLogger.LogInfo($"Repaired missing header at slot {slotIndex} for WEM {wemIdForSlot}");
                     }
                 }
+                WemAdditionLogger.LogSection("WriteWpkFilePreservingSlots - New WEM Files");
+                WemAdditionLogger.Log($"Adding {newWemFiles.Count} new WEM files starting at slot {originalSlotCount}");
                 for (int i = 0; i < newWemFiles.Count; i++)
                 {
                     int slotIndex = originalSlotCount + i;
                     var wem = newWemFiles[i];
                     int entryOffset = nextOffset;
                     entryOffsets[slotIndex] = entryOffset;
+
+                    WemAdditionLogger.Log($"  Writing new WEM: Id={wem.Id}, SlotIndex={slotIndex}, EntryOffset={entryOffset}, DataLength={wem.Data.Length}");
 
                     wpkFile.Position = entryOffset;
                     writer.Write(0);
@@ -277,8 +257,8 @@ namespace LoL_Announcer_Editor
                     writer.Write(wem.Data);
                     int dataEndPosNew = (int)wpkFile.Position;
 
+                    WemAdditionLogger.Log($"  WEM {wem.Id}: DataOffset={dataOffset}, DataEndPos={dataEndPosNew}");
                     nextOffset = ClampInt(dataOffset + wem.Data.Length, clamp);
-                    BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Slot {slotIndex}: NEW WEM {wem.Id}, headerPos={entryOffset}, afterNamePos={afterNamePosNew}, dataOffset={dataOffset}, dataEnd={dataEndPosNew}, size={wem.Data.Length}");
                 }
 
                 // Write offset table
@@ -287,22 +267,6 @@ namespace LoL_Announcer_Editor
                     wpkFile.Position = offsetTableStart + i * 4;
                     writer.Write(entryOffsets[i]);
                 }
-
-                int nonZero = 0;
-                for (int i = 0; i < totalSlots; i++) if (entryOffsets[i] != 0) nonZero++;
-                BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Offset table written: nonZero={nonZero}/{totalSlots}");
-                int previewCount = Math.Min(10, totalSlots);
-                var preview = new StringBuilder();
-                for (int i = 0; i < previewCount; i++)
-                {
-                    if (i > 0) preview.Append(", ");
-                    preview.Append(entryOffsets[i]);
-                }
-                BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: First {previewCount} offsets: [{preview}]");
-                ScenarioLogger.LogInfo($"Saved WPK offsets nonZero={nonZero}/{totalSlots}");
-
-                BnkWpkLogger.LogInfo($"WriteWpkFilePreservingSlots: Completed, final file size: {wpkFile.Length} bytes");
-                BnkWpkLogger.LogOperationEnd("Write WPK File (Preserving Slots)", true);
             }
         }
 
@@ -310,22 +274,18 @@ namespace LoL_Announcer_Editor
         public static void WriteWpkFile(List<AudioData> wemFiles, string outputPath)
         {
             const int clamp = 8;
-            BnkWpkLogger.LogOperationStart("Write WPK File");
-            BnkWpkLogger.LogInfo($"WriteWpkFile: Starting to write {wemFiles.Count} WEM files to {outputPath}");
-            
+
             using (var wpkFile = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
             using (var writer = new BinaryWriter(wpkFile))
             {
                 // Write header
                 writer.Write(Encoding.ASCII.GetBytes("r3d2\x01\x00\x00\x00"));
                 writer.Write(wemFiles.Count);
-                BnkWpkLogger.LogInfo($"WriteWpkFile: Wrote header with {wemFiles.Count} files");
 
                 // Skip over the initial offset section and write them later
                 long offsetSectionStart = wpkFile.Position;
                 wpkFile.Position += wemFiles.Count * 4;
                 wpkFile.Position += DiffToClamp((int)wpkFile.Position, clamp);
-                BnkWpkLogger.LogInfo($"WriteWpkFile: Skipped offset section, now at position {wpkFile.Position}");
 
                 var offsetList = new List<int>(wemFiles.Count);
                 for (int i = 0; i < wemFiles.Count; i++)
@@ -342,13 +302,10 @@ namespace LoL_Announcer_Editor
                         wpkFile.Position += 1;
                     }
                     wpkFile.Position += DiffToClamp((int)wpkFile.Position, clamp);
-                    
-                    BnkWpkLogger.LogInfo($"WriteWpkFile: File {i}: ID={wemFiles[i].Id}, Length={wemFiles[i].Length}, Filename={filenameString}, Offset={offsetList[i]}");
                 }
 
                 int startDataOffset = (int)wpkFile.Position;
-                BnkWpkLogger.LogInfo($"WriteWpkFile: Data section starts at offset {startDataOffset}");
-                
+
                 for (int i = 0; i < wemFiles.Count; i++)
                 {
                     // Seek to initial place in the offset section and write offset
@@ -364,27 +321,17 @@ namespace LoL_Announcer_Editor
                     // Seek to written data offset and write data
                     wpkFile.Position = offsetList[i];
                     writer.Write(wemFiles[i].Data);
-                    
-                    BnkWpkLogger.LogInfo($"WriteWpkFile: Wrote data for file {i}: ID={wemFiles[i].Id}, DataLength={wemFiles[i].Data.Length}, Position={wpkFile.Position}");
                 }
-                
-                BnkWpkLogger.LogInfo($"WriteWpkFile: Completed writing {wemFiles.Count} files, final file size: {wpkFile.Length} bytes");
-                BnkWpkLogger.LogOperationEnd("Write WPK File", true);
             }
         }
 
         // Append WEM files to existing WPK file
         public static bool AppendWemToWpk(List<AudioData> newWemFiles, string wpkPath)
         {
-            BnkWpkLogger.LogOperationStart("Append WEM to WPK");
             try
             {
-                BnkWpkLogger.LogInfo($"AppendWemToWpk: Starting to append {newWemFiles.Count} WEM files to {wpkPath}");
-                
                 if (!File.Exists(wpkPath))
                 {
-                    BnkWpkLogger.LogError($"AppendWemToWpk: WPK file not found: {wpkPath}");
-                    BnkWpkLogger.LogOperationEnd("Append WEM to WPK", false);
                     return false;
                 }
 
@@ -392,28 +339,20 @@ namespace LoL_Announcer_Editor
                 var existingWemInfo = WpkExtractor.ParseWpkFile(wpkPath, new List<StringHash>(), null);
                 if (existingWemInfo == null)
                 {
-                    BnkWpkLogger.LogError("AppendWemToWpk: Failed to parse existing WPK file");
-                    BnkWpkLogger.LogOperationEnd("Append WEM to WPK", false);
                     return false;
                 }
-                
-                BnkWpkLogger.LogInfo($"AppendWemToWpk: Existing WPK has {existingWemInfo.SortedWemDataList.Count} files");
-                
+
                 // Combine existing and new WEM files
                 var allWemFiles = new List<AudioData>(existingWemInfo.SortedWemDataList);
                 allWemFiles.AddRange(newWemFiles);
-                
+
                 // Write combined WPK file
                 WriteWpkFile(allWemFiles, wpkPath);
-                
-                BnkWpkLogger.LogInfo($"AppendWemToWpk: Successfully appended {newWemFiles.Count} files to WPK");
-                BnkWpkLogger.LogOperationEnd("Append WEM to WPK", true);
+
                 return true;
             }
-            catch (Exception ex)
+            catch
             {
-                BnkWpkLogger.LogError($"AppendWemToWpk: Failed to append WEM files: {ex.Message}");
-                BnkWpkLogger.LogOperationEnd("Append WEM to WPK", false);
                 return false;
             }
         }
@@ -461,4 +400,4 @@ namespace LoL_Announcer_Editor
             }
         }
     }
-} 
+}

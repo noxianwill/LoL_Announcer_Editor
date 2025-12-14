@@ -8,42 +8,32 @@ namespace LoL_Announcer_Editor
 {
     public static class BnkWriter
     {
-        private static HashSet<uint> _affectedFileIds = new HashSet<uint>();
-
         public static bool WriteBnkFile(BNKSections sections, string outputPath, uint bnkVersion = 0x86)
         {
-            BnkLogger.LogOperationStart("Write BNK File");
             try
             {
-                BnkLogger.LogInfo($"Writing BNK file to: {outputPath}");
-                BnkLogger.LogInfo($"BNK version: {bnkVersion:X}");
-                
                 using (var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
                 using (var writer = new BinaryWriter(fs))
                 {
                     // Write BKHD section
                     WriteBkhdSection(writer, bnkVersion);
-                    
+
                     // Write HIRC section
                     WriteHircSection(writer, sections, bnkVersion);
                 }
-                
-                BnkLogger.LogInfo($"Successfully wrote BNK file: {outputPath}");
-                BnkLogger.LogOperationEnd("Write BNK File", true);
+
                 return true;
             }
-            catch (Exception ex)
+            catch
             {
-                BnkLogger.LogError($"Failed to write BNK file: {ex.Message}");
-                BnkLogger.LogOperationEnd("Write BNK File", false);
                 return false;
             }
         }
-        
+
         private static void WriteBkhdSection(BinaryWriter writer, uint version)
         {
             const uint bkhdSectionLength = 0x14;
-            
+
             // Write BKHD header
             writer.Write(Encoding.ASCII.GetBytes("BKHD"));
             writer.Write(bkhdSectionLength);
@@ -51,13 +41,10 @@ namespace LoL_Announcer_Editor
             writer.Write(0u); // BNK ID
             writer.Write(0x17705d3e); // Random hardcoded bytes
             writer.Write(new byte[bkhdSectionLength - 12]); // Padding
-            
-            BnkLogger.LogInfo("Wrote BKHD section");
         }
-        
+
         private static void WriteHircSection(BinaryWriter writer, BNKSections sections, uint bnkVersion)
         {
-            BnkLogger.LogInfo("WriteHircSection: Starting HIRC section calculation");
             // Calculate HIRC section size
             uint hircSize = 4; // for the object count
             foreach (var sound in sections.Sounds)
@@ -79,65 +66,33 @@ namespace LoL_Announcer_Editor
             foreach (var mpl in sections.MusicPlaylists)
                 hircSize += 1 + 4 + CalculateMusicContainerObjectSize(mpl, bnkVersion);
 
-            BnkLogger.LogInfo($"WriteHircSection: Object counts - Sounds: {sections.Sounds.Count}, EventActions: {sections.EventActions.Count}, Events: {sections.Events.Count}, RandomContainers: {sections.RandomContainers.Count}, SwitchContainers: {sections.SwitchContainers.Count}, MusicSegments: {sections.MusicSegments.Count}, MusicTracks: {sections.MusicTracks.Count}, MusicSwitches: {sections.MusicSwitches.Count}, MusicPlaylists: {sections.MusicPlaylists.Count}");
-
             writer.Write(Encoding.ASCII.GetBytes("HIRC"));
             writer.Write(hircSize);
-            uint totalObjects = (uint)(sections.Sounds.Count + sections.EventActions.Count + sections.Events.Count + 
-                sections.RandomContainers.Count + sections.SwitchContainers.Count + sections.MusicSegments.Count + 
+            uint totalObjects = (uint)(sections.Sounds.Count + sections.EventActions.Count + sections.Events.Count +
+                sections.RandomContainers.Count + sections.SwitchContainers.Count + sections.MusicSegments.Count +
                 sections.MusicTracks.Count + sections.MusicSwitches.Count + sections.MusicPlaylists.Count);
             writer.Write(totalObjects);
-            BnkLogger.LogInfo($"Writing HIRC section with {totalObjects} objects");
-            int objectIndex = 0;
-            // Sample log for first 3 objects of each type
-            for (int i = 0; i < sections.Sounds.Count; i++)
-            {
-                WriteSoundObject(writer, sections.Sounds[i], bnkVersion);
-                objectIndex++;
-            }
-            for (int i = 0; i < sections.EventActions.Count; i++)
-            {
-                WriteEventActionObject(writer, sections.EventActions[i]);
-                objectIndex++;
-            }
-            for (int i = 0; i < sections.Events.Count; i++)
-            {
-                WriteEventObject(writer, sections.Events[i], bnkVersion);
-                objectIndex++;
-            }
-            for (int i = 0; i < sections.RandomContainers.Count; i++)
-            {
-                WriteRandomContainerObject(writer, sections.RandomContainers[i], bnkVersion);
-                objectIndex++;
-            }
-            for (int i = 0; i < sections.SwitchContainers.Count; i++)
-            {
-                WriteSwitchContainerObject(writer, sections.SwitchContainers[i], bnkVersion);
-                objectIndex++;
-            }
-            for (int i = 0; i < sections.MusicSegments.Count; i++)
-            {
-                WriteMusicContainerObject(writer, sections.MusicSegments[i], bnkVersion, 10);
-                objectIndex++;
-            }
-            for (int i = 0; i < sections.MusicTracks.Count; i++)
-            {
-                WriteMusicTrackObject(writer, sections.MusicTracks[i], bnkVersion);
-                objectIndex++;
-            }
-            for (int i = 0; i < sections.MusicSwitches.Count; i++)
-            {
-                WriteMusicSwitchObject(writer, sections.MusicSwitches[i], bnkVersion);
-                objectIndex++;
-            }
-            for (int i = 0; i < sections.MusicPlaylists.Count; i++)
-            {
-                WriteMusicContainerObject(writer, sections.MusicPlaylists[i], bnkVersion, 13);
-                objectIndex++;
-            }
-            BnkLogger.LogInfo($"WriteHircSection: Completed writing {objectIndex} objects");
+
+            foreach (var sound in sections.Sounds)
+                WriteSoundObject(writer, sound, bnkVersion);
+            foreach (var ea in sections.EventActions)
+                WriteEventActionObject(writer, ea);
+            foreach (var evt in sections.Events)
+                WriteEventObject(writer, evt, bnkVersion);
+            foreach (var rc in sections.RandomContainers)
+                WriteRandomContainerObject(writer, rc, bnkVersion);
+            foreach (var sc in sections.SwitchContainers)
+                WriteSwitchContainerObject(writer, sc, bnkVersion);
+            foreach (var ms in sections.MusicSegments)
+                WriteMusicContainerObject(writer, ms, bnkVersion, 10);
+            foreach (var mt in sections.MusicTracks)
+                WriteMusicTrackObject(writer, mt, bnkVersion);
+            foreach (var msi in sections.MusicSwitches)
+                WriteMusicSwitchObject(writer, msi, bnkVersion);
+            foreach (var mpl in sections.MusicPlaylists)
+                WriteMusicContainerObject(writer, mpl, bnkVersion, 13);
         }
-        
+
         // Helper methods for calculating object sizes
         private static uint CalculateSoundObjectSize(Sound sound, uint bnkVersion)
         {
@@ -182,11 +137,11 @@ namespace LoL_Announcer_Editor
 
             return size;
         }
-        
+
         private static uint CalculateEventActionObjectSize(EventAction eventAction)
         {
             uint size = 10; // SelfId (4) + Scope (1) + Type (1) + SoundObjectId (4) + SwitchGroupId (4)
-            
+
             // Handle different EventAction types based on the reading logic
             if (eventAction.Type == 25 || eventAction.Type == 18)
             {
@@ -195,27 +150,27 @@ namespace LoL_Announcer_Editor
                 size += 4; // SwitchGroupId (written before SoundObjectId for these types)
                 size += 4; // SoundObjectId
             }
-            
+
             return size;
         }
-        
+
         private static uint CalculateEventObjectSize(Event evt, uint bnkVersion)
         {
             return 5 + (uint)(evt.EventIds.Count * 4); // SelfId (4) + EventAmount (1) + EventIds (4 each)
         }
-        
+
         private static int GetBaseParamsSize(uint bnkVersion)
         {
             // For BNK version 0x86, use a safe estimate of 64 bytes (adjust if needed)
             return 64;
         }
-        
+
         private static void WriteBaseParams(BinaryWriter writer, uint bnkVersion)
         {
             // For BNK version 0x86, write 64 bytes of zeros (adjust if needed)
             writer.Write(new byte[64]);
         }
-        
+
         private static uint CalculateRandomContainerObjectSize(RandomContainer obj, uint bnkVersion)
         {
             uint size = 4; // SelfId
@@ -225,17 +180,17 @@ namespace LoL_Announcer_Editor
             size += (uint)(obj.SoundIds.Count * 4); // SoundIds
             return size;
         }
-        
+
         private static uint CalculateSwitchContainerObjectSize(SwitchContainer switchContainer, uint bnkVersion)
         {
             return 13 + (uint)(switchContainer.Children.Count * 4); // SelfId (4) + ParentId (4) + GroupType (1) + GroupId (4) + NumChildren (4) + Children (4 each)
         }
-        
+
         private static uint CalculateMusicContainerObjectSize(MusicContainer musicContainer, uint bnkVersion)
         {
             return 16 + (uint)(musicContainer.MusicTrackIds.Count * 4); // SelfId (4) + MusicSwitchId (4) + SoundObjectId (4) + MusicTrackIdAmount (4) + MusicTrackIds (4 each)
         }
-        
+
         private static uint CalculateMusicTrackObjectSize(MusicTrack musicTrack, uint bnkVersion)
         {
             uint size = 13 + (uint)(musicTrack.FileIds.Count * 4); // SelfId (4) + TrackCount (4) + FileIds (4 each) + HasSwitchIds (1) + SwitchGroupId (4)
@@ -245,7 +200,7 @@ namespace LoL_Announcer_Editor
             }
             return size;
         }
-        
+
         private static uint CalculateMusicSwitchObjectSize(MusicSwitch musicSwitch, uint bnkVersion)
         {
             uint size = 16 + (uint)(musicSwitch.Children.Count * 4); // SelfId (4) + ParentId (4) + NumChildren (4) + Children (4 each) + NumArguments (4)
@@ -253,7 +208,7 @@ namespace LoL_Announcer_Editor
             size += 4 + (uint)(musicSwitch.Nodes.Count * 8); // NumNodes (4) + Nodes (8 each)
             return size;
         }
-        
+
         // Helper methods for writing objects
         private static void WriteSoundObject(BinaryWriter writer, Sound sound, uint bnkVersion)
         {
@@ -273,7 +228,7 @@ namespace LoL_Announcer_Editor
             if (bnkVersion <= 0x70)
                 writer.Write(sound.Unknown3 ?? new byte[4]);
             writer.Write(sound.FileId);
-            
+
             // Write extended Sound fields if they exist
             if (sound.SoundStructure != null)
             {
@@ -307,12 +262,8 @@ namespace LoL_Announcer_Editor
                 writer.Write(sound.SoundStructure.OverrideBusID);             // 4 bytes
                 writer.Write(sound.SoundStructure.DirectParentID);            // 4 bytes
             }
-            
-            // Minimal, non-spammy log for affected/new WEMs
-            if (_affectedFileIds.Contains(sound.FileId))
-                BnkLogger.LogInfo($"[Write] Sound object for new/affected WEM: SelfId={sound.SelfId}, FileId={sound.FileId}, IsStreamed={sound.IsStreamed}");
         }
-        
+
         private static void WriteEventActionObject(BinaryWriter writer, EventAction eventAction)
         {
             if (eventAction.RawData != null && eventAction.RawData.Length > 0)
@@ -320,14 +271,13 @@ namespace LoL_Announcer_Editor
                 writer.Write(eventAction.RawData);
                 return;
             }
-            long startPos = writer.BaseStream.Position;
             writer.Write((byte)3); // Type 3
             uint length = CalculateEventActionObjectSize(eventAction);
             writer.Write(length);
             writer.Write(eventAction.SelfId);
             writer.Write(eventAction.Scope);
             writer.Write(eventAction.Type);
-            
+
             // Handle different EventAction types based on the reading logic
             if (eventAction.Type == 25 || eventAction.Type == 18)
             {
@@ -343,9 +293,8 @@ namespace LoL_Announcer_Editor
                 writer.Write(eventAction.SoundObjectId);
                 writer.Write(eventAction.SwitchGroupId);
             }
-            long endPos = writer.BaseStream.Position;
         }
-        
+
         private static void WriteEventObject(BinaryWriter writer, Event evt, uint bnkVersion)
         {
             if (evt.RawData != null && evt.RawData.Length > 0)
@@ -353,9 +302,6 @@ namespace LoL_Announcer_Editor
                 writer.Write(evt.RawData);
                 return;
             }
-            // Debug log for diagnosis
-            BnkLogger.LogInfo($"[DEBUG] Writing Event: SelfId={evt.SelfId}, EventAmount={evt.EventAmount}, EventIds=[{string.Join(", ", evt.EventIds)}]");
-            long startPos = writer.BaseStream.Position;
             writer.Write((byte)4); // Type 4
             uint length = CalculateEventObjectSize(evt, bnkVersion);
             writer.Write(length);
@@ -365,9 +311,8 @@ namespace LoL_Announcer_Editor
             {
                 writer.Write(eventId);
             }
-            long endPos = writer.BaseStream.Position;
         }
-        
+
         private static void WriteRandomContainerObject(BinaryWriter writer, RandomContainer obj, uint bnkVersion)
         {
             if (obj.RawData != null && obj.RawData.Length > 0)
@@ -384,12 +329,8 @@ namespace LoL_Announcer_Editor
             writer.Write(obj.SoundIdAmount);
             foreach (var id in obj.SoundIds)
                 writer.Write(id);
-            // Minimal, non-spammy log for affected/new SoundIds
-            foreach (var id in obj.SoundIds)
-                if (_affectedFileIds.Contains(id))
-                    BnkLogger.LogInfo($"[Write] RandomContainer for affected SoundId: {id}");
         }
-        
+
         private static void WriteSwitchContainerObject(BinaryWriter writer, SwitchContainer switchContainer, uint bnkVersion)
         {
             if (switchContainer.RawData != null && switchContainer.RawData.Length > 0)
@@ -397,7 +338,6 @@ namespace LoL_Announcer_Editor
                 writer.Write(switchContainer.RawData);
                 return;
             }
-            long startPos = writer.BaseStream.Position;
             writer.Write((byte)6); // Type 6
             uint length = CalculateSwitchContainerObjectSize(switchContainer, bnkVersion);
             writer.Write(length);
@@ -410,9 +350,8 @@ namespace LoL_Announcer_Editor
             {
                 writer.Write(child);
             }
-            long endPos = writer.BaseStream.Position;
         }
-        
+
         private static void WriteMusicContainerObject(BinaryWriter writer, MusicContainer musicContainer, uint bnkVersion, byte type)
         {
             if (musicContainer.RawData != null && musicContainer.RawData.Length > 0)
@@ -420,7 +359,6 @@ namespace LoL_Announcer_Editor
                 writer.Write(musicContainer.RawData);
                 return;
             }
-            long startPos = writer.BaseStream.Position;
             writer.Write(type);
             uint length = CalculateMusicContainerObjectSize(musicContainer, bnkVersion);
             writer.Write(length);
@@ -432,9 +370,8 @@ namespace LoL_Announcer_Editor
             {
                 writer.Write(trackId);
             }
-            long endPos = writer.BaseStream.Position;
         }
-        
+
         private static void WriteMusicTrackObject(BinaryWriter writer, MusicTrack musicTrack, uint bnkVersion)
         {
             if (musicTrack.RawData != null && musicTrack.RawData.Length > 0)
@@ -442,7 +379,6 @@ namespace LoL_Announcer_Editor
                 writer.Write(musicTrack.RawData);
                 return;
             }
-            long startPos = writer.BaseStream.Position;
             writer.Write((byte)11); // Type 11
             uint length = CalculateMusicTrackObjectSize(musicTrack, bnkVersion);
             writer.Write(length);
@@ -461,9 +397,8 @@ namespace LoL_Announcer_Editor
                     writer.Write(switchId);
                 }
             }
-            long endPos = writer.BaseStream.Position;
         }
-        
+
         private static void WriteMusicSwitchObject(BinaryWriter writer, MusicSwitch musicSwitch, uint bnkVersion)
         {
             if (musicSwitch.RawData != null && musicSwitch.RawData.Length > 0)
@@ -471,7 +406,6 @@ namespace LoL_Announcer_Editor
                 writer.Write(musicSwitch.RawData);
                 return;
             }
-            long startPos = writer.BaseStream.Position;
             writer.Write((byte)12); // Type 12
             uint length = CalculateMusicSwitchObjectSize(musicSwitch, bnkVersion);
             writer.Write(length);
@@ -494,22 +428,19 @@ namespace LoL_Announcer_Editor
                 writer.Write(node.Key);
                 writer.Write(node.AudioId);
             }
-            long endPos = writer.BaseStream.Position;
         }
 
         public static bool WriteBnkFile_FullFidelity(BnkFullFidelity fullFidelity, string outputPath)
         {
-            BnkLogger.LogOperationStart("Write BNK File (Full Fidelity)");
             try
             {
-                BnkLogger.LogInfo($"Writing BNK file to: {outputPath}");
                 using (var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
                 using (var writer = new BinaryWriter(fs))
                 {
                     // Group objects by type (sections vs HIRC objects)
                     var sections = new List<BnkObjectRecord>();
                     var hircObjects = new List<BnkObjectRecord>();
-                    
+
                     foreach (var obj in fullFidelity.AllObjectsInOrder)
                     {
                         if (obj.Type == 0xFF) // Section blocks
@@ -521,19 +452,19 @@ namespace LoL_Announcer_Editor
                             hircObjects.Add(obj);
                         }
                     }
-                    
+
                     // Write sections in order (BKHD, DIDX, DATA, etc.)
                     foreach (var section in sections)
                     {
                         writer.Write(section.RawData);
                     }
-                    
+
                     // Write HIRC section with all objects
                     if (hircObjects.Count > 0)
                     {
                         // Write HIRC header
                         writer.Write(Encoding.ASCII.GetBytes("HIRC"));
-                        
+
                         // Calculate HIRC section size (4 bytes for count + all object data)
                         uint hircSize = 4; // Count field
                         foreach (var obj in hircObjects)
@@ -550,29 +481,15 @@ namespace LoL_Announcer_Editor
                                 hircSize += (uint)obj.RawData.Length;
                             }
                         }
-                        BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] Writing HIRC section: {hircObjects.Count} objects, size={hircSize} bytes");
                         writer.Write(hircSize);
-                        
+
                         // Write object count
                         writer.Write((uint)hircObjects.Count);
-                        
+
                         // Write all HIRC objects
-                        int hircObjIndex = 0;
                         foreach (var obj in hircObjects)
                         {
                             int expectedLen = 5 + (int)obj.Length;
-                            if (!obj.IsChanged && (obj.RawData == null || obj.RawData.Length < expectedLen))
-                            {
-                                BnkLogger.LogError($"[WriteBnkFile_FullFidelity] HIRC object {hircObjIndex}: Type={obj.Type}, Length={obj.Length}, RawData.Length={(obj.RawData == null ? -1 : obj.RawData.Length)} -- INSUFFICIENT DATA");
-                            }
-                            else if (!obj.IsChanged)
-                            {
-                                BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] HIRC object {hircObjIndex}: Type={obj.Type}, Length={obj.Length}, RawData.Length={obj.RawData.Length}");
-                            }
-                            else
-                            {
-                                BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] HIRC object {hircObjIndex}: Type={obj.Type}, Length={obj.Length}, RawData.Length={(obj.RawData == null ? -1 : obj.RawData.Length)} -- WILL BE SERIALIZED");
-                            }
                             if (!obj.IsChanged)
                             {
                                 // Write the object data (type + length + data)
@@ -583,57 +500,20 @@ namespace LoL_Announcer_Editor
                                 if (obj.RawData != null && obj.RawData.Length >= expectedLen)
                                     Array.Copy(obj.RawData, 5, objData, 0, obj.Length);
                                 writer.Write(objData);
-
-                                // Log original object details for comparison
-                                if (obj.ParsedObject is Sound sound)
-                                {
-                                    BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] Original Sound {hircObjIndex}: SelfId={sound.SelfId}, FileId={sound.FileId}, Unknown2.Length={sound.Unknown2?.Length}, Unknown3.Length={sound.Unknown3?.Length}, RawData.Length={obj.RawData?.Length}");
-                                    // DEBUG: Log hex dump of the written data for new Sound objects
-                                    if (obj.RawData != null && obj.RawData.Length >= 21)
-                                    {
-                                        BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] [DEBUG] Sound {hircObjIndex} RawData (first 40 bytes): {BitConverter.ToString(obj.RawData, 0, Math.Min(40, obj.RawData.Length)).Replace("-", " ")}");
-                                        uint selfIdFromRaw = BitConverter.ToUInt32(obj.RawData, 5);
-                                        uint field17FromRaw = BitConverter.ToUInt32(obj.RawData, 17);
-                                        BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] [DEBUG] Sound {hircObjIndex}: RawData[5-8]={selfIdFromRaw}, RawData[17-20]={field17FromRaw}");
-                                    }
-                                }
-                                else if (obj.ParsedObject is EventAction eventAction)
-                                {
-                                    BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] Original EventAction {hircObjIndex}: SelfId={eventAction.SelfId}, Type={eventAction.Type}, SoundObjectId={eventAction.SoundObjectId}, RawData.Length={obj.RawData?.Length}");
-                                }
                             }
                             else
                             {
                                 // Serialize from ParsedObject
-                                BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] Serializing changed object {hircObjIndex}: Type={obj.Type}, ParsedObject={obj.ParsedObject?.GetType().Name ?? "null"}");
                                 byte[] newBytes = SerializeObject(obj, fullFidelity.BnkVersion);
-                                BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] Serialized object {hircObjIndex}: {newBytes.Length} bytes");
-                                
-                                // Log detailed comparison for new objects
-                                if (obj.ParsedObject is Sound sound)
-                                {
-                                    BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] New Sound {hircObjIndex}: SelfId={sound.SelfId}, FileId={sound.FileId}, Unknown2.Length={sound.Unknown2?.Length}, Unknown3.Length={sound.Unknown3?.Length}, SerializedSize={newBytes.Length}");
-                                }
-                                else if (obj.ParsedObject is EventAction eventAction)
-                                {
-                                    BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] New EventAction {hircObjIndex}: SelfId={eventAction.SelfId}, Type={eventAction.Type}, SoundObjectId={eventAction.SoundObjectId}, SerializedSize={newBytes.Length}");
-                                }
-                                
                                 writer.Write(newBytes);
-                                BnkLogger.LogInfo($"[WriteBnkFile_FullFidelity] Wrote {newBytes.Length} bytes for object {hircObjIndex} at position {writer.BaseStream.Position}");
                             }
-                            hircObjIndex++;
                         }
                     }
                 }
-                BnkLogger.LogInfo($"Successfully wrote BNK file: {outputPath}");
-                BnkLogger.LogOperationEnd("Write BNK File (Full Fidelity)", true);
                 return true;
             }
-            catch (Exception ex)
+            catch
             {
-                BnkLogger.LogError($"Failed to write BNK file: {ex.Message}");
-                BnkLogger.LogOperationEnd("Write BNK File (Full Fidelity)", false);
                 return false;
             }
         }
@@ -641,31 +521,27 @@ namespace LoL_Announcer_Editor
         // Helper to serialize known types from ParsedObject (expand as needed)
         private static byte[] SerializeObject(BnkObjectRecord obj, uint bnkVersion)
         {
-            BnkLogger.LogInfo($"[SerializeObject] Serializing object: Type={obj.Type}, ParsedObject={obj.ParsedObject?.GetType().Name ?? "null"}, BNK version={bnkVersion:X}");
-            
             // For now, just return RawData for unknowns or not implemented
             if (obj.ParsedObject == null)
             {
-                BnkLogger.LogWarning($"[SerializeObject] ParsedObject is null, returning RawData");
                 return obj.RawData;
             }
-                
+
             // Handle Sound objects (Type 2)
             if (obj.ParsedObject is Sound sound)
             {
-                BnkLogger.LogInfo($"[SerializeObject] Serializing Sound: SelfId={sound.SelfId}, FileId={sound.FileId}");
                 using (var ms = new MemoryStream())
                 using (var writer = new BinaryWriter(ms))
                 {
                     writer.Write((byte)2); // Type 2 = Sound
-                    
+
                     // Calculate correct length for Sound based on BNK version and announcer fields
                     uint length = (uint)(4 + 4 + 1 + 4); // SelfId + Unknown1 + IsStreamed + FileId
                     if (bnkVersion <= 0x59 && sound.Unknown2 != null && sound.Unknown2.Length > 0)
                         length += (uint)sound.Unknown2.Length;
                     if (bnkVersion <= 0x70 && sound.Unknown3 != null && sound.Unknown3.Length > 0)
                         length += (uint)sound.Unknown3.Length;
-                    
+
                     // Add length for extended Sound fields if they exist
                     if (sound.SoundStructure != null)
                     {
@@ -699,7 +575,7 @@ namespace LoL_Announcer_Editor
                         length += 4; // OverrideBusID (uint)
                         length += 4; // DirectParentID (uint)
                     }
-                    
+
                     writer.Write(length);
                     writer.Write(sound.SelfId);
                     writer.Write(sound.Unknown1);
@@ -709,7 +585,7 @@ namespace LoL_Announcer_Editor
                     if (bnkVersion <= 0x70 && sound.Unknown3 != null && sound.Unknown3.Length > 0)
                         writer.Write(sound.Unknown3);
                     writer.Write(sound.FileId);
-                    
+
                     // Write extended Sound fields if they exist
                     if (sound.SoundStructure != null)
                     {
@@ -743,25 +619,22 @@ namespace LoL_Announcer_Editor
                         writer.Write(sound.SoundStructure.OverrideBusID);             // 4 bytes (uint)
                         writer.Write(sound.SoundStructure.DirectParentID);            // 4 bytes (uint)
                     }
-                    
-                    var result = ms.ToArray();
-                    BnkLogger.LogInfo($"[SerializeObject] Serialized Sound: {result.Length} bytes (length field: {length})");
-                    return result;
+
+                    return ms.ToArray();
                 }
             }
-            
+
             // Handle EventAction objects (Type 3)
             if (obj.ParsedObject is EventAction eventAction)
             {
-                BnkLogger.LogInfo($"[SerializeObject] Serializing EventAction: SelfId={eventAction.SelfId}, SoundObjectId={eventAction.SoundObjectId}, Type={eventAction.Type}");
                 using (var ms = new MemoryStream())
                 using (var writer = new BinaryWriter(ms))
                 {
                     writer.Write((byte)3); // Type 3 = EventAction
-                    
+
                     // Calculate correct length for EventAction
                     uint length = (uint)(4 + 1 + 1 + 4 + 4); // SelfId + Scope + Type + SoundObjectId + SwitchGroupId
-                    
+
                     // Handle different EventAction types based on the reading logic
                     if (eventAction.Type == 25 || eventAction.Type == 18)
                     {
@@ -770,12 +643,12 @@ namespace LoL_Announcer_Editor
                         length += 4; // SwitchGroupId (written before SoundObjectId for these types)
                         length += 4; // SoundObjectId
                     }
-                    
+
                     writer.Write(length);
                     writer.Write(eventAction.SelfId);
                     writer.Write(eventAction.Scope);
                     writer.Write(eventAction.Type);
-                    
+
                     // Handle different EventAction types based on the reading logic
                     if (eventAction.Type == 25 || eventAction.Type == 18)
                     {
@@ -791,13 +664,11 @@ namespace LoL_Announcer_Editor
                         writer.Write(eventAction.SoundObjectId);
                         writer.Write(eventAction.SwitchGroupId);
                     }
-                    
-                    var result = ms.ToArray();
-                    BnkLogger.LogInfo($"[SerializeObject] Serialized EventAction: {result.Length} bytes (length field: {length})");
-                    return result;
+
+                    return ms.ToArray();
                 }
             }
-            
+
             // Handle Event objects (Type 4) - for when events are modified
             if (obj.ParsedObject is Event evt)
             {
@@ -823,65 +694,94 @@ namespace LoL_Announcer_Editor
             // Handle RandomContainer objects (Type 5) - for when containers are modified
             if (obj.ParsedObject is RandomContainer randomContainer)
             {
-                BnkLogger.LogInfo($"[SerializeObject] Serializing RandomContainer: SelfId={randomContainer.SelfId}, SoundIdAmount={randomContainer.SoundIdAmount}, SoundIds.Count={randomContainer.SoundIds.Count}");
-                BnkLogger.LogInfo($"[SerializeObject] [DEBUG] RandomContainer obj.RawData={obj.RawData?.Length ?? -1}, randomContainer.RawData={randomContainer.RawData?.Length ?? -1}");
+                WemAdditionLogger.LogSection("BnkWriter.SerializeObject - RandomContainer");
+                WemAdditionLogger.LogRandomContainer(randomContainer, "SERIALIZING");
 
-                // Use the original RawData and patch only the playlist section at the end
-                // Structure: Type (1) + Length (4) + SelfId (4) + BaseParams (variable) + 24 bytes + SoundIdAmount (4) + Sound IDs (N * 4 bytes each)
+                // Use the original RawData and patch BOTH children array AND playlist section
+                // Structure according to Python parser (parse_hirc_sequence_container):
+                // Type (1) + Length (4) + SelfId (4) + NodeBaseParams (variable) + 24 bytes +
+                // ChildrenCount (4) + Children (N * 4) + PlaylistLength (2) + Playlist (M * 8)
                 byte[] originalData = obj.RawData ?? randomContainer.RawData;
                 if (originalData == null || originalData.Length < 5)
                 {
-                    BnkLogger.LogError($"[SerializeObject] RandomContainer has no RawData, cannot serialize");
+                    WemAdditionLogger.Log("ERROR: RandomContainer has no RawData");
                     return new byte[0];
                 }
-                BnkLogger.LogInfo($"[SerializeObject] [DEBUG] Using originalData with {originalData.Length} bytes");
+                WemAdditionLogger.Log($"Original RawData length: {originalData.Length}");
 
-                // Parse the original to find the playlist position by re-reading
+                // Parse the original to find the children and playlist positions
                 using (var ms = new MemoryStream(originalData))
                 using (var reader = new BinaryReader(ms))
                 {
                     byte type = reader.ReadByte(); // Should be 5
                     uint origLength = reader.ReadUInt32();
                     uint selfId = reader.ReadUInt32();
+                    WemAdditionLogger.Log($"Original: Type={type}, Length={origLength}, SelfId={selfId}");
 
                     // Skip BaseParams using the helper (same as during parsing)
                     uint dummy;
                     BnkBinaryHelpers.SkipBaseParams(reader, bnkVersion, out dummy);
 
-                    // Skip the 24 bytes after BaseParams
+                    // Skip the 24 bytes after BaseParams (loop info, transition, etc.)
                     reader.BaseStream.Seek(24, SeekOrigin.Current);
 
-                    // Now we're at SoundIdAmount position
-                    long soundIdAmountPos = reader.BaseStream.Position;
-                    uint originalCount = reader.ReadUInt32();
+                    // Record position of children count
+                    long childrenCountPos = reader.BaseStream.Position;
+                    uint originalChildrenCount = reader.ReadUInt32();
+                    long childrenArrayStart = reader.BaseStream.Position;
+                    reader.BaseStream.Seek(originalChildrenCount * 4, SeekOrigin.Current);
+                    long childrenArrayEnd = reader.BaseStream.Position;
+                    WemAdditionLogger.Log($"Children: count={originalChildrenCount}, pos={childrenCountPos}, arrayEnd={childrenArrayEnd}");
 
-                    // Playlist is just 4 bytes per Sound ID (not 12 bytes!)
-                    long oldPlaylistEnd = soundIdAmountPos + 4 + (originalCount * 4);
+                    // Now we're at PlaylistLength position (u16, NOT u32!)
+                    long playlistLengthPos = reader.BaseStream.Position;
+                    ushort originalPlaylistLength = reader.ReadUInt16();
+                    WemAdditionLogger.Log($"PlaylistLength position: {playlistLengthPos}, Original playlist length: {originalPlaylistLength}");
+
+                    // Original playlist is 8 bytes per entry (playID: u32 + weight: u32)
+                    long oldPlaylistEnd = playlistLengthPos + 2 + (originalPlaylistLength * 8);
                     long bytesRemaining = originalData.Length - oldPlaylistEnd;
+                    WemAdditionLogger.Log($"Old playlist end: {oldPlaylistEnd}, Bytes remaining after: {bytesRemaining}");
 
-                    BnkLogger.LogInfo($"[SerializeObject] Found SoundIdAmount at position {soundIdAmountPos}, original count={originalCount}, trailing bytes={bytesRemaining}");
+                    // Build new children list from playlist (children = all PlayIDs in playlist)
+                    var newChildrenIds = randomContainer.Playlist.Select(p => p.PlayID).ToList();
+                    WemAdditionLogger.Log($"New children count: {newChildrenIds.Count}");
 
                     // Build new RawData
                     using (var outMs = new MemoryStream())
                     using (var writer = new BinaryWriter(outMs))
                     {
-                        // Copy everything up to (but not including) SoundIdAmount
-                        writer.Write(originalData, 0, (int)soundIdAmountPos);
+                        // Copy everything up to (but not including) ChildrenCount
+                        writer.Write(originalData, 0, (int)childrenCountPos);
 
-                        // Write new SoundIdAmount and Sound IDs (4 bytes each, not 12!)
-                        writer.Write((uint)randomContainer.SoundIds.Count);
-                        BnkLogger.LogInfo($"[SerializeObject] Writing SoundIdAmount={randomContainer.SoundIds.Count}");
-                        foreach (var soundId in randomContainer.SoundIds)
+                        // Write new ChildrenCount (u32)
+                        writer.Write((uint)newChildrenIds.Count);
+
+                        // Write new Children array (each u32)
+                        foreach (var childId in newChildrenIds)
                         {
-                            writer.Write(soundId);
-                            BnkLogger.LogInfo($"[SerializeObject] Wrote Sound ID: {soundId}");
+                            writer.Write(childId);
+                            WemAdditionLogger.Log($"  Writing Child: {childId}");
+                        }
+
+                        // Write new PlaylistLength as u16
+                        ushort newPlaylistLength = (ushort)randomContainer.Playlist.Count;
+                        writer.Write(newPlaylistLength);
+                        WemAdditionLogger.Log($"Writing new PlaylistLength: {newPlaylistLength}");
+
+                        // Write playlist entries (8 bytes each: playID + weight)
+                        foreach (var entry in randomContainer.Playlist)
+                        {
+                            writer.Write(entry.PlayID);
+                            writer.Write(entry.Weight);
+                            WemAdditionLogger.Log($"  Writing PlaylistEntry: PlayID={entry.PlayID}, Weight={entry.Weight}");
                         }
 
                         // Copy any trailing bytes
                         if (bytesRemaining > 0)
                         {
                             writer.Write(originalData, (int)oldPlaylistEnd, (int)bytesRemaining);
-                            BnkLogger.LogInfo($"[SerializeObject] Copied {bytesRemaining} trailing bytes from position {oldPlaylistEnd}");
+                            WemAdditionLogger.Log($"Copied {bytesRemaining} trailing bytes");
                         }
 
                         // Update the length field (bytes 1-4)
@@ -889,7 +789,7 @@ namespace LoL_Announcer_Editor
                         uint newLength = (uint)(newData.Length - 5); // Exclude type byte and length field itself
                         Array.Copy(BitConverter.GetBytes(newLength), 0, newData, 1, 4);
 
-                        BnkLogger.LogInfo($"[SerializeObject] Serialized RandomContainer: {newData.Length} bytes (old: {originalData.Length}, length field: {newLength})");
+                        WemAdditionLogger.Log($"New RawData length: {newData.Length}, New length field: {newLength}");
                         return newData;
                     }
                 }
@@ -904,101 +804,43 @@ namespace LoL_Announcer_Editor
         {
             try
             {
-                BnkWpkLogger.LogInfo($"WriteBnkFile_CopyRaw: Starting write operation");
-                BnkWpkLogger.LogInfo($"WriteBnkFile_CopyRaw: Input bytes: {originalBytes?.Length ?? 0}");
-                BnkWpkLogger.LogInfo($"WriteBnkFile_CopyRaw: Output path: {outputPath}");
-                
                 // Validate input
-                if (originalBytes == null)
+                if (originalBytes == null || originalBytes.Length == 0 || string.IsNullOrEmpty(outputPath))
                 {
-                    BnkWpkLogger.LogError("WriteBnkFile_CopyRaw: originalBytes is null");
                     return false;
                 }
-                
-                if (originalBytes.Length == 0)
-                {
-                    BnkWpkLogger.LogError("WriteBnkFile_CopyRaw: originalBytes is empty (0 bytes)");
-                    return false;
-                }
-                
-                if (string.IsNullOrEmpty(outputPath))
-                {
-                    BnkWpkLogger.LogError("WriteBnkFile_CopyRaw: outputPath is null or empty");
-                    return false;
-                }
-                
+
                 // Check if output directory exists
-                string outputDir = Path.GetDirectoryName(outputPath);
+                string? outputDir = Path.GetDirectoryName(outputPath);
                 if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
                 {
-                    BnkWpkLogger.LogInfo($"WriteBnkFile_CopyRaw: Creating output directory: {outputDir}");
                     Directory.CreateDirectory(outputDir);
                 }
-                
-                // Check if output file is writable (if it exists)
-                if (File.Exists(outputPath))
-                {
-                    BnkWpkLogger.LogInfo("WriteBnkFile_CopyRaw: Output file exists, checking if writable");
-                    try
-                    {
-                        using (var testStream = File.Open(outputPath, FileMode.Open, FileAccess.Write))
-                        {
-                            testStream.Close();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        BnkWpkLogger.LogError($"WriteBnkFile_CopyRaw: Output file is not writable: {ex.Message}");
-                        return false;
-                    }
-                }
-                
-                BnkWpkLogger.LogInfo("WriteBnkFile_CopyRaw: Creating FileStream");
+
                 using (var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
                 {
-                    BnkWpkLogger.LogInfo($"WriteBnkFile_CopyRaw: FileStream created, position: {fs.Position}");
-                    BnkWpkLogger.LogInfo($"WriteBnkFile_CopyRaw: About to write {originalBytes.Length} bytes");
-                    
                     fs.Write(originalBytes, 0, originalBytes.Length);
-                    
-                    BnkWpkLogger.LogInfo($"WriteBnkFile_CopyRaw: Write completed, position: {fs.Position}");
-                    
-                    // Force flush to ensure data is written to disk
                     fs.Flush();
-                    BnkWpkLogger.LogInfo("WriteBnkFile_CopyRaw: Flush completed");
                 }
-                
+
                 // Verify the file was written correctly
                 if (File.Exists(outputPath))
                 {
                     var fileInfo = new FileInfo(outputPath);
-                    BnkWpkLogger.LogInfo($"WriteBnkFile_CopyRaw: File exists after write, size: {fileInfo.Length} bytes");
-                    
                     if (fileInfo.Length == 0)
                     {
-                        BnkWpkLogger.LogError("WriteBnkFile_CopyRaw: File exists but is 0 bytes - write failed");
                         return false;
-                    }
-                    
-                    if (fileInfo.Length != originalBytes.Length)
-                    {
-                        BnkWpkLogger.LogWarning($"WriteBnkFile_CopyRaw: File size ({fileInfo.Length}) differs from expected ({originalBytes.Length})");
                     }
                 }
                 else
                 {
-                    BnkWpkLogger.LogError("WriteBnkFile_CopyRaw: File does not exist after write operation");
                     return false;
                 }
-                
-                BnkWpkLogger.LogInfo($"WriteBnkFile_CopyRaw: Successfully wrote {originalBytes.Length} bytes to {outputPath}");
+
                 return true;
             }
-            catch (Exception ex)
+            catch
             {
-                BnkWpkLogger.LogError($"WriteBnkFile_CopyRaw: Exception during write: {ex.GetType().Name}: {ex.Message}");
-                BnkWpkLogger.LogError($"WriteBnkFile_CopyRaw: Stack trace: {ex.StackTrace}");
-                BnkWpkLogger.LogError($"WriteBnkFile_CopyRaw: Input bytes: {originalBytes?.Length ?? 0}, Output path: {outputPath}");
                 return false;
             }
         }
@@ -1008,72 +850,28 @@ namespace LoL_Announcer_Editor
         {
             try
             {
-                BnkLogger.LogInfo($"[ValidateWrittenBnkFile] Validating BNK file: {bnkPath}");
-                
                 if (!File.Exists(bnkPath))
                 {
-                    BnkLogger.LogError($"[ValidateWrittenBnkFile] File does not exist: {bnkPath}");
                     return false;
                 }
-                
+
                 var fileInfo = new FileInfo(bnkPath);
                 if (fileInfo.Length == 0)
                 {
-                    BnkLogger.LogError($"[ValidateWrittenBnkFile] File is empty: {bnkPath}");
                     return false;
                 }
-                
-                BnkLogger.LogInfo($"[ValidateWrittenBnkFile] File size: {fileInfo.Length} bytes");
-                
+
                 // Try to parse the written file
                 var testFullFidelity = new BnkFullFidelity();
                 var testSections = new BNKSections();
                 bool parseSuccess = BnkExtractor.ParseEventBnkFile_FullFidelity(bnkPath, testFullFidelity, testSections);
-                
-                if (!parseSuccess)
-                {
-                    BnkLogger.LogError($"[ValidateWrittenBnkFile] Failed to parse written BNK file: {bnkPath}");
-                    return false;
-                }
-                
-                BnkLogger.LogInfo($"[ValidateWrittenBnkFile] Successfully parsed written BNK file:");
-                BnkLogger.LogInfo($"[ValidateWrittenBnkFile]   BNK Version: {testFullFidelity.BnkVersion:X}");
-                BnkLogger.LogInfo($"[ValidateWrittenBnkFile]   Total Objects: {testFullFidelity.AllObjectsInOrder.Count}");
-                BnkLogger.LogInfo($"[ValidateWrittenBnkFile]   Sounds: {testSections.Sounds.Count}");
-                BnkLogger.LogInfo($"[ValidateWrittenBnkFile]   EventActions: {testSections.EventActions.Count}");
-                BnkLogger.LogInfo($"[ValidateWrittenBnkFile]   Events: {testSections.Events.Count}");
-                
-                // Check for any new objects (those with high IDs)
-                var newSounds = testSections.Sounds.Where(s => s.SelfId > 1000).ToList();
-                var newEventActions = testSections.EventActions.Where(ea => ea.SelfId > 1000).ToList();
-                
-                if (newSounds.Count > 0)
-                {
-                    BnkLogger.LogInfo($"[ValidateWrittenBnkFile] Found {newSounds.Count} new Sound objects:");
-                    foreach (var sound in newSounds)
-                    {
-                        BnkLogger.LogInfo($"[ValidateWrittenBnkFile]   New Sound: SelfId={sound.SelfId}, FileId={sound.FileId}, Unknown2.Length={sound.Unknown2?.Length}, Unknown3.Length={sound.Unknown3?.Length}");
-                    }
-                }
-                
-                if (newEventActions.Count > 0)
-                {
-                    BnkLogger.LogInfo($"[ValidateWrittenBnkFile] Found {newEventActions.Count} new EventAction objects:");
-                    foreach (var ea in newEventActions)
-                    {
-                        BnkLogger.LogInfo($"[ValidateWrittenBnkFile]   New EventAction: SelfId={ea.SelfId}, Type={ea.Type}, SoundObjectId={ea.SoundObjectId}");
-                    }
-                }
-                
-                BnkLogger.LogInfo($"[ValidateWrittenBnkFile] BNK file validation successful: {bnkPath}");
-                return true;
+
+                return parseSuccess;
             }
-            catch (Exception ex)
+            catch
             {
-                BnkLogger.LogError($"[ValidateWrittenBnkFile] Exception during validation: {ex.Message}");
-                BnkLogger.LogError($"[ValidateWrittenBnkFile] Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
     }
-} 
+}

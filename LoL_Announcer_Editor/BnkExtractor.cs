@@ -10,54 +10,37 @@ namespace LoL_Announcer_Editor
     {
         public static bool ParseEventBnkFile(string path, BNKSections sections)
         {
-            BnkLogger.LogOperationStart("Parse BNK File");
-            BnkLogger.LogInfo($"ParseEventBnkFile: Starting to parse BNK file: {path}");
-            
             if (!File.Exists(path))
             {
-                BnkLogger.LogError($"ParseEventBnkFile: File not found: {path}");
-                BnkLogger.LogOperationEnd("Parse BNK File", false);
                 Defs.EPrintf($"Error: Failed to open \"{path}\".\n");
                 return false;
             }
-            
+
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
             using (var reader = new BinaryReader(fs))
             {
                 var magic = reader.ReadBytes(4);
                 if (Encoding.ASCII.GetString(magic) != "BKHD")
                 {
-                    BnkLogger.LogError("ParseEventBnkFile: Not a valid BNK file (missing BKHD magic)");
-                    BnkLogger.LogOperationEnd("Parse BNK File", false);
                     Defs.EPrintf("Error: Not a bnk file!\n");
                     return false;
                 }
-                
-                BnkLogger.LogInfo("ParseEventBnkFile: Valid BKHD magic found");
+
                 reader.BaseStream.Seek(4, SeekOrigin.Current);
                 uint bnkVersion = reader.ReadUInt32();
-                BnkLogger.LogInfo($"ParseEventBnkFile: BNK version: {bnkVersion:X}");
 
                 uint sectionLength = SkipToSection(reader, "HIRC", true);
                 if (sectionLength == 0)
                 {
-                    BnkLogger.LogError($"ParseEventBnkFile: Failed to find HIRC section in file: {path}");
-                    BnkLogger.LogOperationEnd("Parse BNK File", false);
                     Defs.EPrintf($"Error: Failed to skip to section \"HIRC\" in file \"{path}\".\nMake sure to provide the correct file.\n");
                     return false;
                 }
-                
-                BnkLogger.LogInfo($"ParseEventBnkFile: Found HIRC section, length: {sectionLength} bytes");
+
                 long initialPosition = reader.BaseStream.Position;
                 uint numOfObjects = reader.ReadUInt32();
-                BnkLogger.LogInfo($"ParseEventBnkFile: HIRC section contains {numOfObjects} objects");
-                
+
                 uint objectsRead = 0;
-                uint soundsRead = 0, eventActionsRead = 0, eventsRead = 0, randomContainersRead = 0;
-                uint switchContainersRead = 0, actorMixersRead = 0, settingsRead = 0, audioBusesRead = 0, blendContainersRead = 0;
-                uint attenuationsRead = 0, dialogueEventsRead = 0, motionBusesRead = 0, motionFxsRead = 0, effectsRead = 0, auxiliaryBusesRead = 0;
-                uint musicSegmentsRead = 0, musicTracksRead = 0, musicSwitchesRead = 0, musicPlaylistsRead = 0, unknownTypesRead = 0;
-                
+
                 while (reader.BaseStream.Position < initialPosition + sectionLength)
                 {
                     long objectStart = reader.BaseStream.Position;
@@ -76,138 +59,91 @@ namespace LoL_Announcer_Editor
                         {
                             case 1:
                                 BnkObjectReaders.ReadSettingsObject(objReader, sections.Settings, fullObjectBytes);
-                                settingsRead++;
                                 break;
                             case 2:
                                 BnkObjectReaders.ReadSoundObject(objReader, sections.Sounds, bnkVersion, fullObjectBytes);
-                                soundsRead++;
                                 break;
                             case 3:
                                 BnkObjectReaders.ReadEventActionObject(objReader, sections.EventActions, fullObjectBytes);
-                                eventActionsRead++;
                                 break;
                             case 4:
                                 BnkObjectReaders.ReadEventObject(objReader, sections.Events, bnkVersion, fullObjectBytes);
-                                eventsRead++;
                                 break;
                             case 5:
                                 BnkObjectReaders.ReadRandomContainerObject(objReader, sections.RandomContainers, bnkVersion, fullObjectBytes);
-                                randomContainersRead++;
                                 break;
                             case 6:
                                 BnkObjectReaders.ReadSwitchContainerObject(objReader, sections.SwitchContainers, bnkVersion, fullObjectBytes);
-                                switchContainersRead++;
                                 break;
                             case 7:
                                 BnkObjectReaders.ReadActorMixerObject(objReader, sections.ActorMixers, bnkVersion, fullObjectBytes);
-                                actorMixersRead++;
                                 break;
                             case 8:
                                 BnkObjectReaders.ReadAudioBusObject(objReader, sections.AudioBuses, fullObjectBytes);
-                                audioBusesRead++;
                                 break;
                             case 9:
                                 BnkObjectReaders.ReadBlendContainerObject(objReader, sections.BlendContainers, fullObjectBytes);
-                                blendContainersRead++;
                                 break;
                             case 14:
                                 BnkObjectReaders.ReadAttenuationObject(objReader, sections.Attenuations, fullObjectBytes);
-                                attenuationsRead++;
                                 break;
                             case 15:
                                 BnkObjectReaders.ReadDialogueEventObject(objReader, sections.DialogueEvents, fullObjectBytes);
-                                dialogueEventsRead++;
                                 break;
                             case 16:
                                 BnkObjectReaders.ReadMotionBusObject(objReader, sections.MotionBuses, fullObjectBytes);
-                                motionBusesRead++;
                                 break;
                             case 17:
                                 BnkObjectReaders.ReadMotionFxObject(objReader, sections.MotionFxs, fullObjectBytes);
-                                motionFxsRead++;
                                 break;
                             case 18:
                                 BnkObjectReaders.ReadEffectObject(objReader, sections.Effects, fullObjectBytes);
-                                effectsRead++;
                                 break;
                             case 19:
                                 BnkObjectReaders.ReadAuxiliaryBusObject(objReader, sections.AuxiliaryBuses, fullObjectBytes);
-                                auxiliaryBusesRead++;
                                 break;
                             case 10:
                                 BnkObjectReaders.ReadMusicContainerObject(objReader, sections.MusicSegments, bnkVersion, fullObjectBytes);
-                                musicSegmentsRead++;
                                 break;
                             case 11:
                                 BnkObjectReaders.ReadMusicTrackObject(objReader, sections.MusicTracks, bnkVersion, fullObjectBytes);
-                                musicTracksRead++;
                                 break;
                             case 12:
                                 BnkObjectReaders.ReadMusicSwitchObject(objReader, sections.MusicSwitches, bnkVersion, fullObjectBytes);
-                                musicSwitchesRead++;
                                 break;
                             case 13:
                                 BnkObjectReaders.ReadMusicContainerObject(objReader, sections.MusicPlaylists, bnkVersion, fullObjectBytes);
-                                musicPlaylistsRead++;
                                 break;
                             default:
-                                unknownTypesRead++;
                                 break;
                         }
                     }
                     reader.BaseStream.Position = objectStart + 5 + objectLength;
                     objectsRead++;
                 }
-                
-                BnkLogger.LogInfo($"ParseEventBnkFile: Object reading summary:");
-                BnkLogger.LogInfo($"  - Total objects read: {objectsRead}/{numOfObjects}");
-                BnkLogger.LogInfo($"  - Sounds: {soundsRead}");
-                BnkLogger.LogInfo($"  - EventActions: {eventActionsRead}");
-                BnkLogger.LogInfo($"  - Events: {eventsRead}");
-                BnkLogger.LogInfo($"  - RandomContainers: {randomContainersRead}");
-                BnkLogger.LogInfo($"  - SwitchContainers: {switchContainersRead}");
-                BnkLogger.LogInfo($"  - ActorMixers: {actorMixersRead}");
-                BnkLogger.LogInfo($"  - Settings: {settingsRead}");
-                BnkLogger.LogInfo($"  - AudioBuses: {audioBusesRead}");
-                BnkLogger.LogInfo($"  - BlendContainers: {blendContainersRead}");
-                BnkLogger.LogInfo($"  - Attenuations: {attenuationsRead}");
-                BnkLogger.LogInfo($"  - DialogueEvents: {dialogueEventsRead}");
-                BnkLogger.LogInfo($"  - MotionBuses: {motionBusesRead}");
-                BnkLogger.LogInfo($"  - MotionFxs: {motionFxsRead}");
-                BnkLogger.LogInfo($"  - Effects: {effectsRead}");
-                BnkLogger.LogInfo($"  - AuxiliaryBuses: {auxiliaryBusesRead}");
-                BnkLogger.LogInfo($"  - MusicSegments: {musicSegmentsRead}");
-                BnkLogger.LogInfo($"  - MusicTracks: {musicTracksRead}");
-                BnkLogger.LogInfo($"  - MusicSwitches: {musicSwitchesRead}");
-                BnkLogger.LogInfo($"  - MusicPlaylists: {musicPlaylistsRead}");
-                BnkLogger.LogInfo($"  - Unknown types: {unknownTypesRead}");
-                
+
                 if (objectsRead != numOfObjects)
                 {
-                    BnkLogger.LogWarning($"ParseEventBnkFile: Object count mismatch - read {objectsRead} but expected {numOfObjects}");
                     Defs.EPrintf($"Warning: objects read ({objectsRead}) != num of objects ({numOfObjects})\n");
                 }
-                
-                BnkLogger.LogInfo($"ParseEventBnkFile: Successfully parsed BNK file: {path}");
-                BnkLogger.LogOperationEnd("Parse BNK File", true);
             }
             return true;
         }
 
         public static bool ParseEventBnkFile_FullFidelity(string path, BnkFullFidelity fullFidelity, BNKSections sections)
         {
-            BnkLogger.LogOperationStart("Parse BNK File (Full Fidelity)");
-            BnkLogger.LogInfo($"ParseEventBnkFile_FullFidelity: Starting to parse BNK file: {path}");
+            WemAdditionLogger.Clear();
+            WemAdditionLogger.LogSection($"ParseEventBnkFile_FullFidelity: {path}");
+
             if (!File.Exists(path))
             {
-                BnkLogger.LogError($"ParseEventBnkFile_FullFidelity: File not found: {path}");
-                BnkLogger.LogOperationEnd("Parse BNK File (Full Fidelity)", false);
                 Defs.EPrintf($"Error: Failed to open \"{path}\".\n");
+                WemAdditionLogger.Log($"ERROR: File not found: {path}");
                 return false;
             }
-            
+
             uint bnkVersion = 0x86; // Default version
-            
+
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
             using (var reader = new BinaryReader(fs))
             {
@@ -219,7 +155,7 @@ namespace LoL_Announcer_Editor
                     uint sectionLen = reader.ReadUInt32();
                     long sectionDataStart = fs.Position;
                     byte[] sectionData = reader.ReadBytes((int)sectionLen);
-                    
+
                     // Read BNK version from BKHD section
                     if (sectionId == "BKHD")
                     {
@@ -228,29 +164,26 @@ namespace LoL_Announcer_Editor
                         {
                             bnkVersion = bkhdReader.ReadUInt32();
                             fullFidelity.BnkVersion = bnkVersion;
-                            BnkLogger.LogInfo($"ParseEventBnkFile_FullFidelity: BNK version: {bnkVersion:X}");
                         }
                     }
-                    
+
                     // If HIRC, parse objects inside (don't store the section itself)
                     if (sectionId == "HIRC")
                     {
-                        BnkLogger.LogInfo($"ParseEventBnkFile_FullFidelity: Parsing HIRC section with {sectionLen} bytes");
                         using (var ms = new MemoryStream(sectionData))
                         using (var hircReader = new BinaryReader(ms))
                         {
                             uint count = hircReader.ReadUInt32();
-                            BnkLogger.LogInfo($"ParseEventBnkFile_FullFidelity: HIRC contains {count} objects");
                             long initialPosition = ms.Position;
                             uint objectsRead = 0;
-                            
+
                             while (ms.Position < initialPosition + sectionLen - 4) // -4 for the count we already read
                             {
                                 long objStart = ms.Position;
                                 byte type = hircReader.ReadByte();
                                 uint len = hircReader.ReadUInt32();
                                 byte[] objData = hircReader.ReadBytes((int)len);
-                                
+
                                 // Try to parse known types, else store as raw
                                 object? parsed = null;
                                 uint? objId = null;
@@ -266,6 +199,7 @@ namespace LoL_Announcer_Editor
                                     {
                                         parsed = sounds[0];
                                         objId = sounds[0].SelfId;
+                                        WemAdditionLogger.Log($"[BnkExtractor] Parsed Sound: SelfId={sounds[0].SelfId}, FileId={sounds[0].FileId}, StreamFileID={sounds[0].StreamFileID}");
                                     }
                                 }
                                 else if (type == 3) // EventAction
@@ -280,6 +214,7 @@ namespace LoL_Announcer_Editor
                                     {
                                         parsed = actions[0];
                                         objId = actions[0].SelfId;
+                                        WemAdditionLogger.Log($"[BnkExtractor] Parsed EventAction: SelfId={actions[0].SelfId}, SoundObjectId={actions[0].SoundObjectId}");
                                     }
                                 }
                                 else if (type == 4) // Event
@@ -294,6 +229,7 @@ namespace LoL_Announcer_Editor
                                     {
                                         parsed = events[0];
                                         objId = events[0].SelfId;
+                                        WemAdditionLogger.Log($"[BnkExtractor] Parsed Event: SelfId={events[0].SelfId}, EventIds=[{string.Join(", ", events[0].EventIds)}]");
                                     }
                                 }
                                 else if (type == 5) // SequenceContainer (often called RandomContainer)
@@ -308,6 +244,7 @@ namespace LoL_Announcer_Editor
                                     {
                                         parsed = randomContainers[0];
                                         objId = randomContainers[0].SelfId;
+                                        WemAdditionLogger.Log($"[BnkExtractor] Parsed RandomContainer: SelfId={randomContainers[0].SelfId}, SoundIdAmount={randomContainers[0].SoundIdAmount}, SoundIds=[{string.Join(", ", randomContainers[0].SoundIds)}]");
                                     }
                                 }
                                 else if (type == 6) // SwitchContainer
@@ -474,14 +411,9 @@ namespace LoL_Announcer_Editor
                                     IsChanged = false,
                                     ObjectId = objId
                                 });
-                                
+
                                 objectsRead++;
                                 ms.Position = objStart + 5 + len; // Ensure we're at the right position
-                            }
-                            
-                            if (objectsRead != count)
-                            {
-                                BnkLogger.LogWarning($"ParseEventBnkFile_FullFidelity: Object count mismatch - read {objectsRead} but expected {count}");
                             }
                         }
                     }
@@ -500,8 +432,6 @@ namespace LoL_Announcer_Editor
                     }
                 }
             }
-            BnkLogger.LogInfo($"ParseEventBnkFile_FullFidelity: Successfully parsed {fullFidelity.AllObjectsInOrder.Count} objects");
-            BnkLogger.LogOperationEnd("Parse BNK File (Full Fidelity)", true);
             return true;
         }
 
@@ -595,4 +525,4 @@ namespace LoL_Announcer_Editor
             }
         }
     }
-} 
+}
