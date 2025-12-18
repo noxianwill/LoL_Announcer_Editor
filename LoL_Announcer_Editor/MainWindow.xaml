@@ -20,6 +20,7 @@
                 <MenuItem Header="Export BNK">
                     <MenuItem Header="Json" Click="MenuItem_Click"/>
                 </MenuItem>
+                <MenuItem Header="Export as Wwise Project Template" Click="ExportWwiseProject_Click"/>
             </MenuItem>
         </Menu>
 

@@ -159,6 +159,86 @@ namespace LoL_Announcer_Editor
             dlg.ShowDialog();
         }
 
+        private void ExportWwiseProject_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Validate that we have parsed data
+                if (_currentBnkSections == null || _rootNodes.Count == 0)
+                {
+                    System.Windows.MessageBox.Show(
+                        "Please parse BIN, WPK, and BNK files first before exporting.",
+                        "Export Error",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Step 1: Select source Wwise project folder
+                var sourceFolderDialog = new System.Windows.Forms.FolderBrowserDialog
+                {
+                    Description = "Select the source Wwise project folder (with imported audio)",
+                    ShowNewFolderButton = false
+                };
+
+                if (sourceFolderDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                    return;
+
+                string sourceFolder = sourceFolderDialog.SelectedPath;
+
+                // Validate the source folder is a Wwise project
+                if (!WwiseProjectExporter.ValidateWwiseProject(sourceFolder, out string validationError))
+                {
+                    System.Windows.MessageBox.Show(
+                        $"Invalid Wwise project folder:\n{validationError}",
+                        "Validation Error",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Step 2: Select destination folder
+                var destFolderDialog = new System.Windows.Forms.FolderBrowserDialog
+                {
+                    Description = "Select destination folder for the exported Wwise project",
+                    ShowNewFolderButton = true
+                };
+
+                if (destFolderDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                    return;
+
+                string destFolder = destFolderDialog.SelectedPath;
+
+                // Step 3: Perform the export
+                var exporter = new WwiseProjectExporter();
+                exporter.Export(
+                    _rootNodes,
+                    _currentBnkSections,
+                    _eventNameLookup,
+                    sourceFolder,
+                    destFolder);
+
+                // Get the output folder name
+                string projectName = Path.GetFileNameWithoutExtension(
+                    Directory.GetFiles(sourceFolder, "*.wproj").FirstOrDefault() ?? "project");
+                string outputPath = Path.Combine(destFolder, projectName + "_LoLTemplate");
+
+                System.Windows.MessageBox.Show(
+                    $"Wwise project template exported successfully!\n\nOutput: {outputPath}\n\nOpen this folder in Wwise to see the generated hierarchy.",
+                    "Export Complete",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"An error occurred during export:\n{ex.Message}",
+                    "Export Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
         private void ParseFilesButton_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -507,7 +587,11 @@ namespace LoL_Announcer_Editor
             var randomContainer = sections.RandomContainers.FirstOrDefault(r => r.SelfId == objectId);
             if (randomContainer != null)
             {
-                foreach (var childId in randomContainer.SoundIds)
+                // Prefer ChildrenIds (hierarchy children) over SoundIds (playlist)
+                var childIds = randomContainer.ChildrenIds.Count > 0
+                    ? randomContainer.ChildrenIds
+                    : randomContainer.SoundIds;
+                foreach (var childId in childIds)
                 {
                     var childFileIds = ResolveObjectToFileIds(childId, sections);
                     fileIds.AddRange(childFileIds);
@@ -2554,6 +2638,13 @@ namespace LoL_Announcer_Editor
                     // NOTE: Do NOT patch offset 17 - it would corrupt sourceID!
                     // sourceID is at offset 14 and is 4 bytes, so patching 17 would overwrite part of it
 
+                    // Patch DirectParentID at offset 32 - this links the Sound to its parent container
+                    // Without this, the Sound points to the wrong container and won't play correctly
+                    if (soundRaw.Length > 36)
+                    {
+                        Array.Copy(BitConverter.GetBytes(targetObjectId), 0, soundRaw, 32, 4);
+                    }
+
                     // Create the new Sound object with cloned RawData
                     var newSound = new Sound
                     {
@@ -2656,6 +2747,11 @@ namespace LoL_Announcer_Editor
                     }
 
                     // NOTE: Do NOT patch offset 17 - it would corrupt sourceID!
+
+                    // NOTE: DirectParentID at offset 32 is NOT patched here because this code path
+                    // creates standalone Sounds not belonging to a container. For announcer files,
+                    // this path should not be reached since all sounds belong to containers.
+                    // If this path is used, the Sound may not play correctly in-game.
 
                     // Clone the template RawData and patch specific byte offsets for EventAction
                     byte[] eventActionRaw = (byte[])templateEventActionObj.RawData.Clone();
