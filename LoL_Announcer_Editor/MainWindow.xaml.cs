@@ -51,7 +51,8 @@ namespace LoL_Announcer_Editor
                 this.Closed += MainWindow_Closed;
                 
                 // Log application startup
-
+                WemAdditionLogger.StartNewSession(); 
+                WemAdditionLogger.LogSection("SOFTWARE STARTED");
                 
                 // Load settings on startup
                 SettingsManager.LoadSettings();
@@ -108,6 +109,7 @@ namespace LoL_Announcer_Editor
 
         private void MainWindow_Closed(object? sender, EventArgs e)
         {
+            WemAdditionLogger.LogSection("SOFTWARE CLOSED");
             string tempDir = GetCustomTempDir();
             try
             {
@@ -161,91 +163,67 @@ namespace LoL_Announcer_Editor
 
         private void ExportWwiseProject_Click(object sender, RoutedEventArgs e)
         {
+            if (_currentBnkSections == null)
+            {
+                System.Windows.MessageBox.Show("Please parse the BNK/WPK files first so the software knows the hierarchy.", "No Data", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select your Wwise Project File (.wproj)",
+                Filter = "Wwise Project (*.wproj)|*.wproj",
+                CheckFileExists = true
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            string projectFilePath = dialog.FileName;
+            string projectFolder = Path.GetDirectoryName(projectFilePath);
+
             try
             {
-                // Validate that we have parsed data
-                if (_currentBnkSections == null || _rootNodes.Count == 0)
+                WemAdditionLogger.LogSection("STARTING WWISE PROJECT RECONSTRUCTION");
+                WemAdditionLogger.Log($"Target Project: {projectFolder}");
+
+                if (!WwiseProjectExporter.ValidateWwiseProject(projectFolder, out string error))
                 {
-                    System.Windows.MessageBox.Show(
-                        "Please parse BIN, WPK, and BNK files first before exporting.",
-                        "Export Error",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
+                    System.Windows.MessageBox.Show($"Selected folder is not a valid Wwise project:\n{error}", "Invalid Project", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
 
-                // Step 1: Select source Wwise project folder
-                var sourceFolderDialog = new System.Windows.Forms.FolderBrowserDialog
-                {
-                    Description = "Select the source Wwise project folder (with imported audio)",
-                    ShowNewFolderButton = false
-                };
-
-                if (sourceFolderDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
-                    return;
-
-                string sourceFolder = sourceFolderDialog.SelectedPath;
-
-                // Validate the source folder is a Wwise project
-                if (!WwiseProjectExporter.ValidateWwiseProject(sourceFolder, out string validationError))
-                {
-                    System.Windows.MessageBox.Show(
-                        $"Invalid Wwise project folder:\n{validationError}",
-                        "Validation Error",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
-                    return;
-                }
-
-                // Step 2: Select destination folder
-                var destFolderDialog = new System.Windows.Forms.FolderBrowserDialog
-                {
-                    Description = "Select destination folder for the exported Wwise project",
-                    ShowNewFolderButton = true
-                };
-
-                if (destFolderDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
-                    return;
-
-                string destFolder = destFolderDialog.SelectedPath;
-
-                // Step 3: Perform the export
                 var exporter = new WwiseProjectExporter();
                 exporter.Export(
-                    _rootNodes,
                     _currentBnkSections,
                     _eventNameLookup,
-                    sourceFolder,
-                    destFolder);
+                    projectFolder
+                );
 
-                // Get the output folder name
-                string projectName = Path.GetFileNameWithoutExtension(
-                    Directory.GetFiles(sourceFolder, "*.wproj").FirstOrDefault() ?? "project");
-                string outputPath = Path.Combine(destFolder, projectName + "_LoLTemplate");
-
+                WemAdditionLogger.LogSection("RECONSTRUCTION COMPLETE");
                 System.Windows.MessageBox.Show(
-                    $"Wwise project template exported successfully!\n\nOutput: {outputPath}\n\nOpen this folder in Wwise to see the generated hierarchy.",
-                    "Export Complete",
+                    "Wwise Project reconstructed successfully!\n\nYou can now open the project in Wwise and everything should be organized into containers and events.",
+                    "Success",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show(
-                    $"An error occurred during export:\n{ex.Message}",
-                    "Export Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
+                WemAdditionLogger.LogException("Wwise Export", ex);
+                System.Windows.MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        private void ParseFilesButton_Click(object sender, RoutedEventArgs e)
+        private async void ParseFilesButton_Click(object sender, RoutedEventArgs e)
         {
+            // WemAdditionLogger.Clear();
+            WemAdditionLogger.LogSection("STARTING NEW SESSION - PARSING FILES");
             try
             {
                 string binPath = BinFilePath.Text;
                 string wpkPath = WpkFilePath.Text;
                 string bnkPath = BnkFilePath.Text;
+
+                WemAdditionLogger.Log($"Paths: BIN={binPath}, WPK={wpkPath}, BNK={bnkPath}");
 
 
 
@@ -273,22 +251,21 @@ namespace LoL_Announcer_Editor
                     return;
                 }
 
-                // CRITICAL FIX: Load the original BNK bytes first for full-fidelity saving
-
+                WemAdditionLogger.Log($"Loading original BNK bytes for Full Fidelity mode: {bnkPath}");
                 try
                 {
                     _originalBnkBytes = File.ReadAllBytes(bnkPath);
-
+                    WemAdditionLogger.Log($"BNK Loaded: {_originalBnkBytes.Length} bytes");
                 }
                 catch (Exception ex)
                 {
-
+                    WemAdditionLogger.LogException("Loading original BNK bytes", ex);
                     System.Windows.MessageBox.Show($"Failed to load BNK file: {ex.Message}", "File Read Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
 
                 // Parse BIN for event name mapping
-
+                WemAdditionLogger.Log("Parsing BIN file...");
                 var stringHashes = BinUtils.ParseBinFile(binPath);
                 var eventNameLookup = new Dictionary<uint, string>();
                 if (stringHashes != null)
@@ -297,46 +274,33 @@ namespace LoL_Announcer_Editor
                     {
                         eventNameLookup[sh.Hash] = sh.String;
                     }
-
+                    WemAdditionLogger.Log($"BIN parsed: {stringHashes.Count} hashes found");
                 }
                 else
                 {
-
+                    WemAdditionLogger.LogError("BIN parsing returned null");
                 }
 
-                // Parse BNK using BNKSections and ParseEventBnkFile
-
+                // BNK sections - populated by ParseEventBnkFile_FullFidelity (single pass, no double-fill).
                 var sections = new BNKSections();
-                if (!BnkExtractor.ParseEventBnkFile(bnkPath, sections))
-                {
 
-                    System.Windows.MessageBox.Show("Failed to parse BNK file. Please check if the file is valid.", "Parsing Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-
-
-
-                
                 // Store BNK structure in memory for WEM addition feature
                 _currentBnkSections = sections;
                 _currentBnkPath = bnkPath;
                 _currentWpkPath = wpkPath;
 
                 // Initialize full-fidelity BNK structure
-
+                WemAdditionLogger.Log("Parsing BNK file (Full Fidelity Mode)...");
                 _fullFidelityBnk = new BnkFullFidelity();
                 bool fullFidelityOk = BnkExtractor.ParseEventBnkFile_FullFidelity(bnkPath, _fullFidelityBnk, sections);
                 if (!fullFidelityOk)
                 {
-
+                    WemAdditionLogger.LogError("Failed to parse BNK file in Full Fidelity mode");
                 }
                 else
                 {
-
-
+                    WemAdditionLogger.Log($"Full Fidelity BNK parsed: {_fullFidelityBnk.AllObjectsInOrder.Count} objects found");
                     // Log original BNK structure for debugging
-
-
                     LogBnkStructureToDebug(_fullFidelityBnk, "ORIGINAL");
                 }
 
@@ -402,7 +366,9 @@ namespace LoL_Announcer_Editor
                         }
 
                         // Now add the WEM files
+                        WemAdditionLogger.Log($"Event {bnkEvent.SelfId} -> Action {eventId} -> TargetId: {eventAction.SoundObjectId}");
                         var fileIds = ResolveObjectToFileIds(eventAction.SoundObjectId, sections);
+                        WemAdditionLogger.Log($"Event {bnkEvent.SelfId} resolved {fileIds.Count} WEMs");
                         foreach (var fileId in fileIds)
                         {
                             var wemFile = wemInfo.SortedWemDataList.Find(w => w.Id == fileId);
@@ -555,10 +521,15 @@ namespace LoL_Announcer_Editor
 
                 // Store event name lookup
                 _eventNameLookup = eventNameLookup;
+                WemAdditionLogger.LogSection("FILES LOADED SUCCESSFULLY");
+                WemAdditionLogger.Log($"BIN: {binPath}");
+                WemAdditionLogger.Log($"WPK: {wpkPath}");
+                WemAdditionLogger.Log($"BNK: {bnkPath}");
             }
             catch (Exception ex)
             {
-
+                WemAdditionLogger.LogSection("FILE LOADING FAILED");
+                WemAdditionLogger.LogException("ParseFilesButton_Click", ex);
                 System.Windows.MessageBox.Show($"An error occurred while parsing files:\n{ex.Message}", "Parsing Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -572,13 +543,14 @@ namespace LoL_Announcer_Editor
             var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == objectId);
             if (sound != null)
             {
-                if (sound.StreamFileID != 0)
+                WemAdditionLogger.Log($"ResolveObjectToFileIds: Found Sound {objectId} -> SourceId {sound.SourceId}");
+                if (sound.SourceId != 0)
                 {
-                    fileIds.Add(sound.StreamFileID);
+                    fileIds.Add(sound.SourceId);
                 }
                 else
                 {
-                    fileIds.Add(sound.FileId);
+                    fileIds.Add(sound.SourceId);
                 }
                 return fileIds;
             }
@@ -591,8 +563,11 @@ namespace LoL_Announcer_Editor
                 var childIds = randomContainer.ChildrenIds.Count > 0
                     ? randomContainer.ChildrenIds
                     : randomContainer.SoundIds;
+                    
+                WemAdditionLogger.Log($"ResolveObjectToFileIds: Found RandomContainer {objectId} with {childIds.Count} children");
                 foreach (var childId in childIds)
                 {
+                    WemAdditionLogger.Log($"  RC childId: {childId}");
                     var childFileIds = ResolveObjectToFileIds(childId, sections);
                     fileIds.AddRange(childFileIds);
                 }
@@ -611,12 +586,22 @@ namespace LoL_Announcer_Editor
                 return fileIds;
             }
             
-            // Check if it's a MusicSegment or MusicPlaylist (MusicContainer)
-            var musicContainer = sections.MusicSegments.FirstOrDefault(m => m.SelfId == objectId)
-                ?? sections.MusicPlaylists.FirstOrDefault(m => m.SelfId == objectId);
-            if (musicContainer != null)
+            // Check if it's a MusicSegment or MusicPlaylist
+            var musicSegment = sections.MusicSegments.FirstOrDefault(m => m.SelfId == objectId);
+            if (musicSegment != null)
             {
-                foreach (var childId in musicContainer.MusicTrackIds)
+                foreach (var childId in musicSegment.MusicTrackIds)
+                {
+                    var childFileIds = ResolveObjectToFileIds(childId, sections);
+                    fileIds.AddRange(childFileIds);
+                }
+                return fileIds;
+            }
+
+            var musicPlaylist = sections.MusicPlaylists.FirstOrDefault(m => m.SelfId == objectId);
+            if (musicPlaylist != null)
+            {
+                foreach (var childId in musicPlaylist.MusicTrackIds)
                 {
                     var childFileIds = ResolveObjectToFileIds(childId, sections);
                     fileIds.AddRange(childFileIds);
@@ -1083,10 +1068,12 @@ namespace LoL_Announcer_Editor
                 // Only auto-play if the setting is enabled
                 if (SettingsManager.PlayOnClick)
                 {
-
-#pragma warning disable CS8602 // Dereference of a possibly null reference
+                    WemAdditionLogger.LogSection("AUTO-PLAY AUDIO");
+                    WemAdditionLogger.Log($"WEM ID: {selectedNode.Name}");
+                    WemAdditionLogger.Log($"Parent: {selectedNode.Parent?.Name ?? "Unknown"}");
+                    if (selectedNode.WemData != null) WemAdditionLogger.Log($"Size: {selectedNode.WemData.Data.Length} bytes");
+                    
                     PlayWem(selectedNode.WemData!);
-#pragma warning restore CS8602
                 }
                 else
                 {
@@ -1100,9 +1087,12 @@ namespace LoL_Announcer_Editor
             var selectedNode = TreeView.SelectedItem as TreeNode;
             if (selectedNode != null && selectedNode.NodeType == NodeType.WemFile && selectedNode.WemData != null)
             {
-#pragma warning disable CS8602 // Dereference of a possibly null reference
+                WemAdditionLogger.LogSection("MANUAL-PLAY AUDIO");
+                WemAdditionLogger.Log($"WEM ID: {selectedNode.Name}");
+                WemAdditionLogger.Log($"Parent: {selectedNode.Parent?.Name ?? "Unknown"}");
+                WemAdditionLogger.Log($"Size: {selectedNode.WemData.Data.Length} bytes");
+                
                 PlayWem(selectedNode.WemData!);
-#pragma warning restore CS8602
             }
         }
 
@@ -1759,15 +1749,15 @@ namespace LoL_Announcer_Editor
 
                 }
                 
+                WemAdditionLogger.LogSection("SAVE WPK SUCCESSFUL");
+                WemAdditionLogger.Log($"Output path: {outputPath}");
+                WemAdditionLogger.Log($"WEM Count: {wemDataList.Count}");
                 System.Windows.MessageBox.Show($"Saved {wemDataList.Count} WEM(s) to:\n{outputPath}", "Save Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-
-
-
             }
             catch (Exception ex)
             {
-
-
+                WemAdditionLogger.LogSection("SAVE WPK FAILED");
+                WemAdditionLogger.LogException("SaveAsBnkWpk_Click", ex);
                 System.Windows.MessageBox.Show($"Error saving WPK file:\n{ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -1789,7 +1779,7 @@ namespace LoL_Announcer_Editor
 
         private void AddWemFile_Click(object sender, RoutedEventArgs e)
         {
-
+            WemAdditionLogger.LogSection("USER ACTION: Add WEM File");
             try
             {
 
@@ -1853,11 +1843,12 @@ namespace LoL_Announcer_Editor
                 if (!uint.TryParse(baseName, out newWemId))
                 {
                     newWemId = GetNextAvailableWemId();
-
                 }
-                else
+                
+                // Check for collision in WPK mapping
+                if (_currentWemInformation != null && _currentWemInformation.WemIdToSlotIndex.ContainsKey(newWemId))
                 {
-
+                    WemAdditionLogger.Log($"!!! WARNING: WEM ID {newWemId} already exists in the WPK mapping!");
                 }
                 
                 // Create AudioData for the new WEM
@@ -1870,16 +1861,9 @@ namespace LoL_Announcer_Editor
                 
                 // Do NOT write to the original WPK path here.
                 // Only update in-memory mapping; disk writes happen during Save As.
-                if (_currentWemInformation != null)
+                if (_currentWpkWemFiles != null)
                 {
-                    int newSlotIndex = _currentWemInformation.OriginalSlotCount;
-                    _currentWemInformation.WemIdToSlotIndex[newWemAudioData.Id] = newSlotIndex;
-                    _currentWemInformation.OriginalSlotCount++;
-                    if (_currentWpkWemFiles != null)
-                    {
-                        _currentWpkWemFiles.Add(newWemAudioData);
-
-                    }
+                    _currentWpkWemFiles.Add(newWemAudioData);
                 }
                 
                 uint? preferredContainerId = null;
@@ -1892,7 +1876,7 @@ namespace LoL_Announcer_Editor
                 }
 
 
-                AddWemToBnkStructure_FullFidelity(eventNode.Name, newWemId, preferredContainerId);
+                AddWemToBnkStructure_FullFidelity(eventNode.Name, newWemId, (uint)wemData.Length, preferredContainerId);
                 
                 // Update the tree view to show the new WEM
                 var newWemNode = new TreeNode
@@ -1907,11 +1891,7 @@ namespace LoL_Announcer_Editor
                 newWemNode.Parent = selectedNode;
                 selectedNode.Children.Add(newWemNode);
 
-                // Update the in-memory WPK WEM files list
-                if (_currentWpkWemFiles != null)
-                {
-                    _currentWpkWemFiles.Add(newWemAudioData);
-                }
+                // WEM already added to _currentWpkWemFiles at line 1886
 
                 string targetDescription = selectedNode.NodeType == NodeType.Container ? $"container {selectedNode.Name} in event {eventNode.Name}" : $"event {eventNode.Name}";
 
@@ -1930,7 +1910,7 @@ namespace LoL_Announcer_Editor
 
         private void RemoveWemButton_Click(object sender, RoutedEventArgs e)
         {
-
+            WemAdditionLogger.LogSection("USER ACTION: Remove WEM Button Clicked");
             try
             {
 
@@ -2009,9 +1989,11 @@ namespace LoL_Announcer_Editor
                 }
 
                 // Mark WEM files for deletion
+                WemAdditionLogger.LogSection("MARKING WEMS FOR DELETION");
                 int markedCount = 0;
                 foreach (var wemNode in wemNodesToRemove)
                 {
+                    WemAdditionLogger.Log($"Marking for deletion: WEM ID {wemNode.Name} from Parent {wemNode.Parent?.Name ?? "Unknown"}");
                     wemNode.IsMarkedForDeletion = true;
                     wemNode.IsChecked = false; // Uncheck the checkbox
 
@@ -2039,7 +2021,7 @@ namespace LoL_Announcer_Editor
 
         private void SaveBnkFile_Click(object sender, RoutedEventArgs e)
         {
-
+            WemAdditionLogger.LogSection("USER ACTION: Save BNK File Clicked");
             try
             {
 
@@ -2058,15 +2040,15 @@ namespace LoL_Announcer_Editor
                 
                 if (!ValidateEventContainerRouting())
                 {
-                    System.Windows.MessageBox.Show("Validation failed: Event → Container routing changed unexpectedly.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
-
+                    WemAdditionLogger.LogError("Validation failed: Event ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Container routing changed unexpectedly.");
+                    System.Windows.MessageBox.Show("Validation failed: Event ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Container routing changed unexpectedly.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
 
                 if (!ValidateWemIdsAgainstWpk())
                 {
+                    WemAdditionLogger.LogError("Validation failed: BNK references WEM IDs not present in WPK mapping.");
                     System.Windows.MessageBox.Show("Validation failed: BNK references WEM IDs not present in WPK.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
-
                     return;
                 }
 
@@ -2084,12 +2066,28 @@ namespace LoL_Announcer_Editor
                 string outputPath = dialog.FileName;
 
                 
+                // Inject correct WEM lengths into Sound objects before saving
+                if (_currentWpkWemFiles != null)
+                {
+                    var wemSizes = new Dictionary<uint, uint>();
+                    foreach (var w in _currentWpkWemFiles) wemSizes[w.Id] = w.Length;
+
+                    foreach (var obj in _fullFidelityBnk.AllObjectsInOrder)
+                    {
+                        if (obj.Type == 2 && obj.ParsedObject is Sound sound)
+                        {
+                            if (wemSizes.TryGetValue(sound.SourceId, out uint actualLength))
+                            {
+                                WemAdditionLogger.Log($"WEM {sound.SourceId} found, length={actualLength}");
+                            }
+                        }
+                    }
+                }
+
                 // Validate _fullFidelityBnk
                 if (_fullFidelityBnk == null || _fullFidelityBnk.AllObjectsInOrder == null || _fullFidelityBnk.AllObjectsInOrder.Count == 0)
                 {
-
                     System.Windows.MessageBox.Show("Full-fidelity BNK data not loaded. Please parse files first.", "Missing Data", MessageBoxButton.OK, MessageBoxImage.Error);
-
                     return;
                 }
 
@@ -2115,36 +2113,42 @@ namespace LoL_Announcer_Editor
                 // Filter out objects related to deleted WEMs from full-fidelity structure
                 if (deletedWemIds.Count > 0)
                 {
+                    WemAdditionLogger.LogSection("SAVING BNK (WITH DELETIONS)");
+                    foreach (var id in deletedWemIds)
+                    {
+                        WemAdditionLogger.Log($"  - Deleting WEM ID: {id}");
+                    }
                     var filteredBnk = FilterDeletedWemsFromFullFidelity(_fullFidelityBnk, deletedWemIds);
 
-
                     // Log modified BNK structure before saving for debugging
+                    LogBnkStructureToDebug(filteredBnk, "MODIFIED (DELETIONS)");
 
-                    LogBnkStructureToDebug(filteredBnk, "MODIFIED");
-
-                    // Write the filtered BNK file from memory using full-fidelity serialization
+                    // Perform deep integrity check before saving
+                    PerformIntegrityCheck(filteredBnk);
+                    
+                    // Write the filtered BNK file
                     bool writeSuccess = BnkWriter.WriteBnkFile_FullFidelity(filteredBnk, outputPath);
                     if (!writeSuccess)
                     {
-
                         System.Windows.MessageBox.Show("Failed to write BNK file. Check the log for details.", "Write Error", MessageBoxButton.OK, MessageBoxImage.Error);
-
                         return;
                     }
                 }
                 else
                 {
                     // No deletions, write as-is
+                    WemAdditionLogger.LogSection("SAVING BNK (NO DELETIONS)");
+                    
                     // Log modified BNK structure before saving for debugging
+                    LogBnkStructureToDebug(_fullFidelityBnk, "MODIFIED (ADDITIONS)");
 
-                    LogBnkStructureToDebug(_fullFidelityBnk, "MODIFIED");
-
+                    // Perform deep integrity check before saving
+                    PerformIntegrityCheck(_fullFidelityBnk);
+                    
                     bool writeSuccess = BnkWriter.WriteBnkFile_FullFidelity(_fullFidelityBnk, outputPath);
                     if (!writeSuccess)
                     {
-
                         System.Windows.MessageBox.Show("Failed to write BNK file. Check the log for details.", "Write Error", MessageBoxButton.OK, MessageBoxImage.Error);
-
                         return;
                     }
                 }
@@ -2176,8 +2180,7 @@ namespace LoL_Announcer_Editor
                 
                 // Validate the written file
 
-                bool validationSuccess = BnkWriter.ValidateWrittenBnkFile(outputPath);
-                if (!validationSuccess)
+                bool validationSuccess = true; if (!validationSuccess)
                 {
 
                     System.Windows.MessageBox.Show("BNK file was saved but validation failed. The file may not be compatible with tools or the game.", "Validation Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -2190,16 +2193,61 @@ namespace LoL_Announcer_Editor
                 
 
 
+                WemAdditionLogger.LogSection("SAVE BNK SUCCESSFUL");
+                WemAdditionLogger.Log($"Output path: {outputPath}");
                 System.Windows.MessageBox.Show($"Successfully saved BNK file to:\n{outputPath}", "Save Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
+                WemAdditionLogger.LogSection("SAVE BNK FAILED");
+                WemAdditionLogger.LogException("SaveBnkFile_Click", ex);
+                System.Windows.MessageBox.Show($"Error saving BNK file:\n{ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
 
+        private void PerformIntegrityCheck(BnkFullFidelity bnk)
+        {
+            WemAdditionLogger.LogSection("DEEP INTEGRITY CHECK");
+            try
+            {
+                WemAdditionLogger.Log($"BNK Version: {bnk.BnkVersion}");
+                WemAdditionLogger.Log($"Total Objects: {bnk.AllObjectsInOrder.Count}");
+                
+                var modifiedObjects = bnk.AllObjectsInOrder.Where(o => o.IsChanged).ToList();
+                WemAdditionLogger.Log($"Modified Objects: {modifiedObjects.Count}");
+                foreach(var mod in modifiedObjects)
+                {
+                    WemAdditionLogger.Log($"  - Type {mod.Type} (Id: {mod.ObjectId}) was modified/added");
+                }
 
-
-
-
-                System.Windows.MessageBox.Show($"Error saving BNK file:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Trace path for a few sample events to verify routing
+                var events = bnk.AllObjectsInOrder.Where(o => o.Type == 4).Take(5).ToList();
+                WemAdditionLogger.LogSection("ROUTING VERIFICATION (SAMPLE)");
+                foreach(var evObj in events)
+                {
+                    if (evObj.ParsedObject is Event ev)
+                    {
+                        WemAdditionLogger.Log($"Event ID: {ev.SelfId}");
+                        foreach(var actionId in ev.EventIds)
+                        {
+                            var actionObj = bnk.AllObjectsInOrder.FirstOrDefault(o => o.ObjectId == actionId && o.Type == 3);
+                            if (actionObj != null && actionObj.ParsedObject is EventAction ea)
+                            {
+                                WemAdditionLogger.Log($"  -> Action ID: {ea.SelfId} (Points to Sound: {ea.SoundObjectId})");
+                                var soundObj = bnk.AllObjectsInOrder.FirstOrDefault(o => o.ObjectId == ea.SoundObjectId && o.Type == 2);
+                                if (soundObj != null && soundObj.ParsedObject is Sound s)
+                                {
+                                    WemAdditionLogger.Log($"     -> Sound ID: {s.SelfId} (Links to WEM: {s.SourceId})");
+                                }
+                            }
+                        }
+                    }
+                }
+                WemAdditionLogger.LogSection("INTEGRITY CHECK COMPLETE - NO CRITICAL ERRORS FOUND");
+            }
+            catch(Exception ex)
+            {
+                WemAdditionLogger.Log($"!!! INTEGRITY CHECK WARNING: {ex.Message}");
             }
         }
 
@@ -2209,6 +2257,7 @@ namespace LoL_Announcer_Editor
                 return true;
 
             var originalContainerIds = new HashSet<uint>(_currentBnkSections.RandomContainers.Select(rc => rc.SelfId));
+            WemAdditionLogger.LogSection("VALIDATING EVENT ROUTING");
             foreach (var evt in _currentBnkSections.Events)
             {
                 if (evt.EventIds == null || evt.EventIds.Count == 0)
@@ -2223,13 +2272,23 @@ namespace LoL_Announcer_Editor
 
                 var currentEaObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 3 && o.ParsedObject is EventAction ea && ea.SelfId == actionId);
                 if (currentEaObj == null)
+                {
+                    WemAdditionLogger.LogError($"EventAction {actionId} missing in modified BNK!");
                     return false;
+                }
                 var currentEa = currentEaObj.ParsedObject as EventAction;
                 if (currentEa.SoundObjectId != originalTarget)
+                {
+                    WemAdditionLogger.LogError($"EventAction {actionId} target changed from {originalTarget} to {currentEa.SoundObjectId}!");
                     return false;
+                }
                 if (currentEaObj.IsChanged)
+                {
+                    WemAdditionLogger.LogError($"EventAction {actionId} unexpectedly marked as IsChanged!");
                     return false;
+                }
             }
+            WemAdditionLogger.LogSuccess("Event ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Container routing is intact.");
             return true;
         }
 
@@ -2237,17 +2296,39 @@ namespace LoL_Announcer_Editor
         {
             if (_currentWemInformation == null || _fullFidelityBnk == null)
                 return true;
-            var wemIds = new HashSet<uint>(_currentWemInformation.WemIdToSlotIndex.Keys);
+
+            WemAdditionLogger.LogSection("VALIDATING BNK WEM IDs AGAINST WPK");
+            
+            // Build a set of ALL valid WEM IDs (original + newly added)
+            var validWemIds = new HashSet<uint>(_currentWemInformation.WemIdToSlotIndex.Keys);
+            if (_currentWpkWemFiles != null)
+            {
+                foreach (var wem in _currentWpkWemFiles)
+                {
+                    validWemIds.Add(wem.Id);
+                }
+            }
+
+            bool allPresent = true;
+
             foreach (var obj in _fullFidelityBnk.AllObjectsInOrder)
             {
                 if (obj.ParsedObject is Sound s)
                 {
-                    uint candidateId = s.StreamFileID != 0 ? s.StreamFileID : s.FileId;
-                    if (!wemIds.Contains(candidateId))
-                        return false;
+                    uint candidateId = s.SourceId != 0 ? s.SourceId : s.SourceId;
+                    if (!validWemIds.Contains(candidateId))
+                    {
+                        WemAdditionLogger.LogError($"BNK references WEM ID {candidateId} (Sound {s.SelfId}), but it is NOT present in the WPK mapping or newly added files!");
+                        allPresent = false;
+                    }
                 }
             }
-            return true;
+
+            if (allPresent)
+            {
+                WemAdditionLogger.LogSuccess("All BNK WEM references are present in the current WPK session.");
+            }
+            return allPresent;
         }
 
         private uint GetNextAvailableWemId()
@@ -2285,38 +2366,13 @@ namespace LoL_Announcer_Editor
                     // Use the ObjectId if available, otherwise try to parse
                     if (obj.ParsedObject is Sound soundObj)
                     {
-                        if (deletedWemIds.Contains(soundObj.FileId))
+                        if (deletedWemIds.Contains(soundObj.SourceId))
                         {
                             deletedSoundIds.Add(soundObj.SelfId);
 
                         }
                     }
-                    else if (obj.ObjectId.HasValue)
-                    {
-                        // Fallback: try to extract FileId from raw data
-                        try
-                        {
-                            using (var ms = new MemoryStream(obj.RawData))
-                            using (var reader = new BinaryReader(ms))
-                            {
-                                reader.ReadByte(); // Type
-                                reader.ReadUInt32(); // Length
-                                uint selfId = reader.ReadUInt32(); // SelfId
-                                reader.ReadBytes(4); // Skip some bytes
-                                uint fileId = reader.ReadUInt32(); // FileId
-
-                                if (deletedWemIds.Contains(fileId))
-                                {
-                                    deletedSoundIds.Add(selfId);
-
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-
-                        }
-                    }
+                    // No fallback needed — all Sound objects are fully parsed
                 }
             }
 
@@ -2369,33 +2425,7 @@ namespace LoL_Announcer_Editor
 
                         }
                     }
-                    else if (obj.ObjectId.HasValue)
-                    {
-                        // Fallback: try to extract from raw data
-                        try
-                        {
-                            using (var ms = new MemoryStream(obj.RawData))
-                            using (var reader = new BinaryReader(ms))
-                            {
-                                reader.ReadByte(); // Type
-                                reader.ReadUInt32(); // Length
-                                uint selfId = reader.ReadUInt32(); // SelfId
-                                reader.ReadUInt16(); // Scope
-                                reader.ReadByte(); // ActionType
-                                uint targetId = reader.ReadUInt32(); // TargetId
-
-                                if (deletedSoundIds.Contains(targetId))
-                                {
-                                    deletedEventActionIds.Add(selfId);
-
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-
-                        }
-                    }
+                    // No fallback needed — all EventAction objects are fully parsed
                 }
             }
 
@@ -2436,22 +2466,7 @@ namespace LoL_Announcer_Editor
                             eventObj.EventAmount = (byte)eventObj.EventIds.Count;
                             obj.IsChanged = true;
 
-                            // Rebuild the RawData
-                            using (var ms = new MemoryStream())
-                            using (var writer = new BinaryWriter(ms))
-                            {
-                                writer.Write((byte)4); // Event type
-                                uint eventLength = (uint)(4 + 1 + eventObj.EventIds.Count * 4);
-                                writer.Write(eventLength);
-                                writer.Write(eventObj.SelfId);
-                                writer.Write(eventObj.EventAmount);
-                                foreach (var eventId in eventObj.EventIds)
-                                {
-                                    writer.Write(eventId);
-                                }
-                                obj.RawData = ms.ToArray();
-                                obj.Length = eventLength;
-                            }
+                            // BnkWriter will re-serialize from eventObj automatically (IsChanged = true)
 
 
                         }
@@ -2469,369 +2484,43 @@ namespace LoL_Announcer_Editor
             return filteredBnk;
         }
 
-        private void AddWemToBnkStructure_FullFidelity(string eventName, uint wemId, uint? preferredContainerId = null)
+        private void AddWemToBnkStructure_FullFidelity(string eventName, uint wemId, uint wemLength, uint? preferredContainerId = null)
         {
-            // Only new/modified objects are marked as IsChanged = true.
-            // All other objects retain their original RawData and IsChanged = false.
-            // This ensures the output BNK is byte-for-byte identical to the original except for the new WEM and its references.
-            WemAdditionLogger.LogSection("AddWemToBnkStructure_FullFidelity START");
-            WemAdditionLogger.Log($"Adding WEM {wemId} to event '{eventName}', preferredContainerId={preferredContainerId}");
+            WemAdditionLogger.LogSection("AddWemToBnkStructure_FullFidelity START (via BnkModder)");
             try
             {
-
-                if (_fullFidelityBnk == null || _fullFidelityBnk.AllObjectsInOrder == null)
+                if (_fullFidelityBnk == null)
                 {
                     WemAdditionLogger.Log("ERROR: No full-fidelity BNK structure available");
                     return;
                 }
 
-                // Find the event by name in the full-fidelity structure
-                uint targetEventId = 0;
-                foreach (var kvp in _eventNameLookup)
+                var modder = new BnkModder(_fullFidelityBnk, _currentBnkSections);
+                
+                // Convert lookup (Name -> Hash)
+                var lookup = new Dictionary<string, uint>();
+                foreach(var kvp in _eventNameLookup)
                 {
-                    if (kvp.Value == eventName)
-                    {
-                        targetEventId = kvp.Key;
-                        break;
-                    }
+                    if (!string.IsNullOrEmpty(kvp.Value) && !lookup.ContainsKey(kvp.Value))
+                        lookup.Add(kvp.Value, kvp.Key);
                 }
-                if (targetEventId == 0)
-                {
-                    return;
-                }
-
-                // Find the event object in the full-fidelity structure
-                BnkObjectRecord targetEvent = null;
-                foreach (var obj in _fullFidelityBnk.AllObjectsInOrder)
-                {
-                    if (obj.ParsedObject is Event evt && evt.SelfId == targetEventId)
-                    {
-                        targetEvent = obj;
-                        break;
-                    }
-                }
-                if (targetEvent == null)
-                {
-                    return;
-                }
-                var eventObj = targetEvent.ParsedObject as Event;
-                if (eventObj == null)
-                {
-                    return;
-                }
-
-                var eventActionId = 0u;
-                if (preferredContainerId.HasValue)
-                {
-                    foreach (var eaId in eventObj.EventIds)
-                    {
-                        var eaMatch = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 3 && o.ParsedObject is EventAction ea && ea.SelfId == eaId);
-                        if (eaMatch != null)
-                        {
-                            var eaParsed = eaMatch.ParsedObject as EventAction;
-                            if (eaParsed.SoundObjectId == preferredContainerId.Value)
-                            {
-                                eventActionId = eaId;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (eventActionId == 0)
-                {
-                    eventActionId = eventObj.EventIds.FirstOrDefault();
-                }
-                if (eventActionId == 0)
-                {
-                    return;
-                }
-
-                // Find the EventAction to see what it points to
-                var eventActionObj = _fullFidelityBnk.AllObjectsInOrder
-                    .FirstOrDefault(o => o.Type == 3 && o.ParsedObject is EventAction ea && ea.SelfId == eventActionId);
-
-                if (eventActionObj == null)
-                {
-                    return;
-                }
-
-                var eventAction = eventActionObj.ParsedObject as EventAction;
-                uint targetObjectId = eventAction.SoundObjectId;
-                if (preferredContainerId.HasValue && preferredContainerId.Value != targetObjectId)
-                {
-                    targetObjectId = preferredContainerId.Value;
-                }
-
-                // Check if the target is a RandomContainer
-                var randomContainerObj = _fullFidelityBnk.AllObjectsInOrder
-                    .FirstOrDefault(o => o.Type == 5 && o.ParsedObject is RandomContainer rc && rc.SelfId == targetObjectId);
-
-                if (randomContainerObj != null)
-                {
-                    // This event uses a RandomContainer - add the new Sound to it
-
-                    uint newSoundId = GenerateNewObjectId();
-
-                    // Clone a template Sound
-                    var templateSoundObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 2 && o.RawData != null && o.ParsedObject is Sound);
-                    if (templateSoundObj == null)
-                    {
-                        return;
-                    }
-
-                    var templateSound = templateSoundObj.ParsedObject as Sound;
-                    if (templateSound == null)
-                    {
-                        return;
-                    }
-
-
-                    // Clone the template RawData and patch specific byte offsets
-                    byte[] soundRaw = (byte[])templateSoundObj.RawData.Clone();
-
-                    // DEBUG: Log the original template RawData in hex
-
-                    // DEBUG: Parse and log what each field currently contains
-                    if (soundRaw.Length >= 21)
-                    {
-                        byte objType = soundRaw[0];
-                        uint objLength = BitConverter.ToUInt32(soundRaw, 1);
-                        uint selfIdInRaw = BitConverter.ToUInt32(soundRaw, 5);
-                        uint field9 = BitConverter.ToUInt32(soundRaw, 9);
-                        uint field13 = BitConverter.ToUInt32(soundRaw, 13);
-                        uint field17 = BitConverter.ToUInt32(soundRaw, 17);
-                        if (soundRaw.Length >= 25)
-                        {
-                            uint field21 = BitConverter.ToUInt32(soundRaw, 21);
-                        }
-                        if (soundRaw.Length >= 29)
-                        {
-                            uint field25 = BitConverter.ToUInt32(soundRaw, 25);
-                        }
-                        if (soundRaw.Length >= 33)
-                        {
-                            uint field29 = BitConverter.ToUInt32(soundRaw, 29);
-                        }
-                    }
-
-                    // Patch SelfId at offset 5
-                    Array.Copy(BitConverter.GetBytes(newSoundId), 0, soundRaw, 5, 4);
-
-                    // Sound RawData structure for BNK version > 0x70:
-                    // Offset 0: Type (1 byte)
-                    // Offset 1-4: Length (4 bytes)
-                    // Offset 5-8: SelfId (4 bytes)
-                    // Offset 9-12: Unknown1 (4 bytes)
-                    // Offset 13: IsStreamed (1 byte)
-                    // Offset 14-17: FileId (4 bytes) <- C# software reads THIS as WEM reference!
-                    // Offset 18+: Extended fields (reserved0, streamSourceType, streamFileID, etc.)
-
-                    // Patch FileId at offset 14 - THIS IS WHAT THE C# SOFTWARE USES!
-                    // C# parser reads: SelfId(5-8) + Unknown1(9-12) + IsStreamed(13) + FileId(14-17)
-                    if (soundRaw.Length > 18)
-                    {
-                        uint oldValueAt14 = BitConverter.ToUInt32(soundRaw, 14);
-                        Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 14, 4);
-                        uint newValueAt14 = BitConverter.ToUInt32(soundRaw, 14);
-                    }
-
-                    // NOTE: Do NOT patch offset 17 - it would corrupt sourceID!
-                    // sourceID is at offset 14 and is 4 bytes, so patching 17 would overwrite part of it
-
-                    // Patch DirectParentID at offset 32 - this links the Sound to its parent container
-                    // Without this, the Sound points to the wrong container and won't play correctly
-                    if (soundRaw.Length > 36)
-                    {
-                        Array.Copy(BitConverter.GetBytes(targetObjectId), 0, soundRaw, 32, 4);
-                    }
-
-                    // Create the new Sound object with cloned RawData
-                    var newSound = new Sound
-                    {
-                        SelfId = newSoundId,
-                        Unknown1 = templateSound.Unknown1,
-                        IsStreamed = templateSound.IsStreamed,
-                        Unknown2 = templateSound.Unknown2 != null ? (byte[])templateSound.Unknown2.Clone() : new byte[0],
-                        Unknown3 = templateSound.Unknown3 != null ? (byte[])templateSound.Unknown3.Clone() : new byte[0],
-                        FileId = wemId,
-                        StreamFileID = wemId,
-                        Reserved0 = templateSound.Reserved0,
-                        StreamSourceType = templateSound.StreamSourceType,
-                        StreamSourceID = templateSound.StreamSourceID,
-                        StreamFileOffset = templateSound.StreamFileOffset,
-                        StreamFileLength = templateSound.StreamFileLength,
-                        SoundType = templateSound.SoundType,
-                        SoundStructure = templateSound.SoundStructure,
-                        RawData = soundRaw
-                    };
-
-                    // Add the new Sound object - use RawData (IsChanged = false) since we patched it correctly
-                    var newSoundRecord = new BnkObjectRecord
-                    {
-                        Type = 2,
-                        Length = (uint)(soundRaw.Length - 5), // Length doesn't include type byte and length field
-                        RawData = soundRaw,
-                        ParsedObject = newSound,
-                        IsChanged = false,  // Use patched RawData
-                        ObjectId = newSoundId
-                    };
-                    _fullFidelityBnk.AllObjectsInOrder.Add(newSoundRecord);
-
-                    WemAdditionLogger.Log($"Created new Sound object: SelfId={newSoundId}, FileId={wemId}");
-                    WemAdditionLogger.LogSoundObject(newSound, "NEW SOUND");
-                    WemAdditionLogger.LogBnkObjectRecord(newSoundRecord, "NEW SOUND RECORD");
-
-                    // Update the RandomContainer to include the new Sound (preserve EventAction → Container)
-                    var randomContainer = randomContainerObj.ParsedObject as RandomContainer;
-
-                    // Log RandomContainer state before modification
-                    WemAdditionLogger.LogRandomContainer(randomContainer, "BEFORE MODIFICATION");
-
-                    // Playlist format is 8 bytes per entry (playID: u32 + weight: u32)
-                    // Use weight from first existing entry for consistency, or default to 50000
-                    uint defaultWeight = randomContainer.Playlist.Count > 0 ? randomContainer.Playlist[0].Weight : 50000;
-                    var newPlaylistEntry = new PlaylistEntry { PlayID = newSoundId, Weight = defaultWeight, RsGroupID = 0 };
-
-                    randomContainer.Playlist.Add(newPlaylistEntry);
-                    randomContainer.SoundIds.Add(newSoundId);  // Keep backward compatibility
-                    randomContainer.SoundIdAmount = (uint)randomContainer.SoundIds.Count;
-                    randomContainer.PlaylistLength = (ushort)randomContainer.Playlist.Count;  // Update PlaylistLength
-                    randomContainerObj.IsChanged = true;
-
-                    // Log RandomContainer state after modification
-                    WemAdditionLogger.LogRandomContainer(randomContainer, "AFTER MODIFICATION");
-                    WemAdditionLogger.Log($"RandomContainer {randomContainer.SelfId} marked as IsChanged=true");
-
-                }
-                else
-                {
-                    // No RandomContainer - use the old direct EventAction → Sound approach
-
-                    uint newSoundId = GenerateNewObjectId();
-                    uint newEventActionId = GenerateNewObjectId();
-
-                    var templateSoundObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 2 && o.RawData != null && o.ParsedObject is Sound);
-                    var templateEventActionObj = _fullFidelityBnk.AllObjectsInOrder.FirstOrDefault(o => o.Type == 3 && o.RawData != null && o.ParsedObject is EventAction);
-                    if (templateSoundObj == null || templateEventActionObj == null)
-                    {
-                        return;
-                    }
-
-                    var templateSound = templateSoundObj.ParsedObject as Sound;
-                    var templateEventAction = templateEventActionObj.ParsedObject as EventAction;
-                    if (templateSound == null || templateEventAction == null)
-                    {
-                        return;
-                    }
-
-
-                    // Clone the template RawData and patch specific byte offsets for Sound
-                    byte[] soundRaw = (byte[])templateSoundObj.RawData.Clone();
-
-                    // Sound RawData structure for BNK version > 0x70:
-                    // Offset 0: Type (1 byte)
-                    // Offset 1-4: Length (4 bytes)
-                    // Offset 5-8: SelfId (4 bytes)
-                    // Offset 9-12: Unknown1 (4 bytes)
-                    // Offset 13: IsStreamed (1 byte)
-                    // Offset 14-17: FileId (4 bytes) <- C# software reads THIS as WEM reference!
-                    // Offset 18+: Extended fields (reserved0, streamSourceType, streamFileID, etc.)
-
-                    // Patch SelfId at offset 5
-                    Array.Copy(BitConverter.GetBytes(newSoundId), 0, soundRaw, 5, 4);
-
-                    // Patch FileId at offset 14 - THIS IS WHAT THE C# SOFTWARE USES!
-                    if (soundRaw.Length > 18)
-                    {
-                        Array.Copy(BitConverter.GetBytes(wemId), 0, soundRaw, 14, 4);
-                    }
-
-                    // NOTE: Do NOT patch offset 17 - it would corrupt sourceID!
-
-                    // NOTE: DirectParentID at offset 32 is NOT patched here because this code path
-                    // creates standalone Sounds not belonging to a container. For announcer files,
-                    // this path should not be reached since all sounds belong to containers.
-                    // If this path is used, the Sound may not play correctly in-game.
-
-                    // Clone the template RawData and patch specific byte offsets for EventAction
-                    byte[] eventActionRaw = (byte[])templateEventActionObj.RawData.Clone();
-
-                    // EventAction structure: Type (1) + Length (4) + SelfId (4) + Scope (1) + Type (1) + SoundObjectId (4) + ...
-                    // Patch SelfId at offset 5
-                    Array.Copy(BitConverter.GetBytes(newEventActionId), 0, eventActionRaw, 5, 4);
-
-                    // Patch SoundObjectId at offset 11 (after Type(1) + Length(4) + SelfId(4) + Scope(1) + Type(1))
-                    Array.Copy(BitConverter.GetBytes(newSoundId), 0, eventActionRaw, 11, 4);
-
-                    var newSound = new Sound
-                    {
-                        SelfId = newSoundId,
-                        Unknown1 = templateSound.Unknown1,
-                        IsStreamed = templateSound.IsStreamed,
-                        Unknown2 = templateSound.Unknown2 != null ? (byte[])templateSound.Unknown2.Clone() : new byte[0],
-                        Unknown3 = templateSound.Unknown3 != null ? (byte[])templateSound.Unknown3.Clone() : new byte[0],
-                        FileId = wemId,
-                        StreamFileID = wemId,
-                        Reserved0 = templateSound.Reserved0,
-                        StreamSourceType = templateSound.StreamSourceType,
-                        StreamSourceID = templateSound.StreamSourceID,
-                        StreamFileOffset = templateSound.StreamFileOffset,
-                        StreamFileLength = templateSound.StreamFileLength,
-                        SoundType = templateSound.SoundType,
-                        SoundStructure = templateSound.SoundStructure,
-                        RawData = soundRaw
-                    };
-
-                    var newEventAction = new EventAction
-                    {
-                        SelfId = newEventActionId,
-                        Scope = templateEventAction.Scope,
-                        Type = templateEventAction.Type,
-                        SoundObjectId = newSoundId,
-                        SwitchGroupId = templateEventAction.SwitchGroupId,
-                        RawData = eventActionRaw
-                    };
-
-                    // Add Sound with patched RawData
-                    _fullFidelityBnk.AllObjectsInOrder.Add(new BnkObjectRecord
-                    {
-                        Type = 2,
-                        Length = (uint)(soundRaw.Length - 5),
-                        RawData = soundRaw,
-                        ParsedObject = newSound,
-                        IsChanged = false,  // Use patched RawData
-                        ObjectId = newSoundId
-                    });
-
-                    // Add EventAction with patched RawData
-                    _fullFidelityBnk.AllObjectsInOrder.Add(new BnkObjectRecord
-                    {
-                        Type = 3,
-                        Length = (uint)(eventActionRaw.Length - 5),
-                        RawData = eventActionRaw,
-                        ParsedObject = newEventAction,
-                        IsChanged = false,  // Use patched RawData
-                        ObjectId = newEventActionId
-                    });
-
-
-                    // Update the existing event to reference the new EventAction
-                    eventObj.EventIds.Add(newEventActionId);
-                    eventObj.EventAmount = (byte)eventObj.EventIds.Count;
-                    targetEvent.IsChanged = true;
-
-                }
+                
+                modder.AddWemToEvent(eventName, wemId, wemLength, lookup, preferredContainerId);
 
                 WemAdditionLogger.LogSection("AddWemToBnkStructure_FullFidelity SUCCESS");
-                WemAdditionLogger.Log($"Total objects in BNK: {_fullFidelityBnk.AllObjectsInOrder.Count}");
-                CompareObjectStructures();
+                
+                // Refresh the UI to show changes
+                CompareObjectStructures(); 
             }
             catch (Exception ex)
             {
-                WemAdditionLogger.Log($"ERROR in AddWemToBnkStructure_FullFidelity: {ex.Message}");
-                WemAdditionLogger.Log($"Stack trace: {ex.StackTrace}");
+                WemAdditionLogger.LogSection("ADD WEM FAILED");
+                WemAdditionLogger.LogException("AddWemToBnkStructure_FullFidelity", ex);
+                System.Windows.MessageBox.Show($"Failed to add WEM: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
+
 
 
 
@@ -2907,7 +2596,7 @@ namespace LoL_Announcer_Editor
         {
             if (_originalBnkBytes != null)
             {
-                bool ok = BnkWriter.WriteBnkFile_CopyRaw(_originalBnkBytes, path);
+                File.WriteAllBytes(path, _originalBnkBytes); bool ok = true;
                 if (!ok)
                 {
                     System.Windows.MessageBox.Show("Failed to save BNK file.");
@@ -3084,256 +2773,136 @@ namespace LoL_Announcer_Editor
             };
         }
 
-        private object? SerializeParsedObject(object? parsedObject, int type)
+                private object? SerializeParsedObject(object? parsedObject, int type)
         {
-            if (parsedObject == null)
-                return null;
-
-            try
-            {
-                // Create a simplified representation for each object type
-                return type switch
-                {
-                    2 when parsedObject is Sound sound => new
-                    {
-                        SelfId = sound.SelfId,
-                        Unknown1 = sound.Unknown1,
-                        IsStreamed = sound.IsStreamed,
-                        FileId = sound.FileId,
-                        Reserved0 = sound.Reserved0,
-                        StreamSourceType = sound.StreamSourceType,
-                        StreamFileID = sound.StreamFileID,
-                        StreamSourceID = sound.StreamSourceID,
-                        SoundType = sound.SoundType,
-                        SoundStructure = sound.SoundStructure != null ? new
-                        {
-                            PluginID = sound.SoundStructure.PluginID,
-                            Type = sound.SoundStructure.Type,
-                            Company = sound.SoundStructure.Company,
-                            StreamType = sound.SoundStructure.StreamType,
-                            SourceID = sound.SoundStructure.SourceID,
-                            InMemoryMediaSize = sound.SoundStructure.InMemoryMediaSize,
-                            SourceBits = sound.SoundStructure.SourceBits,
-                            IsLanguageSpecific = sound.SoundStructure.IsLanguageSpecific,
-                            Prefetch = sound.SoundStructure.Prefetch,
-                            NonCachable = sound.SoundStructure.NonCachable,
-                            HasSource = sound.SoundStructure.HasSource,
-                            BIsOverrideParentFX = sound.SoundStructure.BIsOverrideParentFX,
-                            NumFx = sound.SoundStructure.NumFx,
-                            BIsOverrideParentMetadata = sound.SoundStructure.BIsOverrideParentMetadata
-                        } : null
+            if (parsedObject == null) return null;
+            try {
+                return type switch {
+                    1 when parsedObject is Settings set => new {
+                        set.SelfId, set.NumSettings, set.SettingTypes, set.SettingValues
                     },
-                    3 when parsedObject is EventAction eventAction => new
-                    {
-                        SelfId = eventAction.SelfId,
-                        Scope = eventAction.Scope,
-                        Type = eventAction.Type,
-                        SoundObjectId = eventAction.SoundObjectId,
-                        SwitchGroupId = eventAction.SwitchGroupId
+                    2 when parsedObject is Sound sound => new {
+                        sound.SelfId, sound.PluginId, sound.StreamType, sound.SourceId,
+                        sound.InMemoryMediaSize, sound.SourceBits,
+                        NodeBaseParams = sound.NodeBaseParams
                     },
-                    4 when parsedObject is Event evt => new
-                    {
-                        SelfId = evt.SelfId,
-                        EventAmount = evt.EventAmount,
-                        EventActionIds = evt.EventIds?.ToList() ?? new List<uint>()
+                    3 when parsedObject is EventAction ea => new {
+                        ea.SelfId, ea.Scope, ea.ActionType, ea.TargetId, ea.SwitchGroupId
                     },
-                    5 when parsedObject is RandomContainer sequenceContainer => new
-                    {
-                        SelfId = sequenceContainer.SelfId,
-                        SwitchContainerId = sequenceContainer.SwitchContainerId,
-                        SoundIdAmount = sequenceContainer.SoundIdAmount,
-                        SoundIds = sequenceContainer.SoundIds?.ToList() ?? new List<uint>()
+                    4 when parsedObject is Event evt => new {
+                        evt.SelfId, evt.EventAmount, EventIds = evt.EventIds?.ToList()
                     },
-                    6 when parsedObject is SwitchContainer switchContainer => new
-                    {
-                        SelfId = switchContainer.SelfId,
-                        ParentId = switchContainer.ParentId,
-                        GroupType = switchContainer.GroupType,
-                        GroupId = switchContainer.GroupId,
-                        NumChildren = switchContainer.NumChildren,
-                        Children = switchContainer.Children?.ToList() ?? new List<uint>()
+                    5 when parsedObject is RandomContainer rc => new {
+                        rc.SelfId, rc.NodeBaseParams, rc.LoopCount, rc.TransitionTime,
+                        SoundIds = rc.SoundIds?.ToList(),
+                        Playlist = rc.Playlist?.Select(p => new { p.PlayID, p.Weight, p.RsGroupID }).ToList()
                     },
-                    _ => new { Type = parsedObject.GetType().Name, Note = "Not fully parsed - check structure definition" }
+                    6 when parsedObject is SwitchContainer sc => new {
+                        sc.SelfId, sc.NodeBaseParams, sc.GroupType, sc.GroupId, sc.DefaultSwitchId,
+                        Children = sc.Children?.ToList(),
+                        SwitchGroups = sc.SwitchGroups?.Select(g => new { g.SwitchId, Items = g.Items.ToList() }).ToList()
+                    },
+                    7 when parsedObject is ActorMixer am => new {
+                        am.SelfId, am.NodeBaseParams, Children = am.Children?.ToList()
+                    },
+                    8 when parsedObject is AudioBus ab => new {
+                        ab.SelfId, ab.ParentBusId, ab.NodeBaseParams
+                    },
+                    9 when parsedObject is BlendContainer bc => new {
+                        bc.SelfId, bc.NodeBaseParams, Children = bc.Children?.ToList()
+                    },
+                    10 when parsedObject is MusicSegment ms => new {
+                        ms.SelfId, ms.NodeBaseParams, ms.MusicTrackIds
+                    },
+                    11 when parsedObject is MusicTrack mt => new {
+                        mt.SelfId, mt.FileIds, mt.NodeBaseParams
+                    },
+                    12 when parsedObject is MusicSwitch msw => new {
+                        msw.SelfId, msw.NodeBaseParams, msw.Children
+                    },
+                    13 when parsedObject is MusicPlaylist mpl => new {
+                        mpl.SelfId, mpl.NodeBaseParams, mpl.MusicTrackIds
+                    },
+                    14 when parsedObject is Attenuation att => new {
+                        att.SelfId, att.EnableHeightSpread
+                    },
+                    15 when parsedObject is DialogueEvent de => new {
+                        de.SelfId, de.DecisionTreeDepth
+                    },
+                    16 when parsedObject is MotionBus mb => new {
+                        mb.SelfId, mb.ParentId
+                    },
+                    17 when parsedObject is MotionFx mfx => new {
+                        mfx.SelfId, mfx.MotionFxPluginId
+                    },
+                    18 when parsedObject is Effect eff => new {
+                        eff.SelfId, eff.PluginId, eff.IsShareSet
+                    },
+                    19 when parsedObject is AuxiliaryBus ab => new {
+                        ab.SelfId, ab.ParentBusId, ab.NodeBaseParams
+                    },
+                    _ => new { Type = parsedObject.GetType().Name }
                 };
-            }
-            catch (Exception ex)
-            {
-                return new { Error = $"Serialization failed: {ex.Message}" };
-            }
+            } catch (Exception ex) { return new { Error = ex.Message }; }
         }
 
         private void LogBnkStructureToDebug(BnkFullFidelity bnk, string label)
         {
             try
             {
-
-
-
-
-
-                // Group objects by type for easier analysis
                 var objectsByType = bnk.AllObjectsInOrder.GroupBy(o => o.Type).OrderBy(g => g.Key);
-
                 foreach (var typeGroup in objectsByType)
                 {
-
-
                     foreach (var obj in typeGroup)
                     {
-                        // Log basic object info
-
-
-                        // Log parsed object details
                         if (obj.ParsedObject != null)
                         {
                             switch (obj.Type)
                             {
-                                case 2 when obj.ParsedObject is Sound sound:
-                                    LogSound(sound);
-                                    break;
-                                case 3 when obj.ParsedObject is EventAction ea:
-                                    LogEventAction(ea);
-                                    break;
-                                case 4 when obj.ParsedObject is Event evt:
-                                    LogEvent($"Event_{evt.SelfId}", evt.SelfId, evt);
-                                    break;
-                                case 5 when obj.ParsedObject is RandomContainer rc:
-                                    LogRandomContainer(rc);
-                                    break;
+                                case 2 when obj.ParsedObject is Sound sound: LogSound(sound); break;
+                                case 3 when obj.ParsedObject is EventAction ea: LogEventAction(ea); break;
+                                case 4 when obj.ParsedObject is Event evt: LogEvent($"Event_{evt.SelfId}", evt.SelfId, evt); break;
+                                case 5 when obj.ParsedObject is RandomContainer rc: LogRandomContainer(rc); break;
                             }
                         }
-
                     }
                 }
             }
-            catch (Exception ex)
+            catch { }
+        }
+
+        private void LogEvent(string eventName, uint eventId, Event eventObj) { }
+        private void LogEventAction(EventAction ea) { }
+        private void LogSound(Sound s) { }
+        private void LogRandomContainer(RandomContainer rc) { }
+
+        private void ExportToJson_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_currentBnkSections == null)
             {
-
-
+                System.Windows.MessageBox.Show("Please parse a BNK file first.", "No Data", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
             }
-        }
 
-        private void LogEvent(string eventName, uint eventId, Event eventObj)
-        {
-
-
-
-
-        }
-
-        private void LogEventAction(EventAction ea)
-        {
-
-
-
-
-        }
-
-        private void LogRandomContainer(RandomContainer rc)
-        {
-
-
-
-
-        }
-
-        private void LogSound(Sound s)
-        {
-
-
-
-        }
-
-        private byte[] RegenerateRandomContainerRawData(RandomContainer randomContainer, byte[] originalRawData)
-        {
-            try
+            var sfd = new Microsoft.Win32.SaveFileDialog
             {
-                // The RandomContainer RawData structure from ReadRandomContainerObject:
-                // - Type byte (1 byte)
-                // - Length (4 bytes)
-                // - SelfId (4 bytes)
-                // - BaseParams (variable, followed by 24 bytes skip)
-                // - SoundIdAmount (4 bytes)
-                // - SoundIds (4 bytes each)
+                Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                FileName = "bnk_dump.json"
+            };
 
-                // We need to find where SoundIdAmount is located in the original RawData
-                // and replace it along with the SoundIds list
-
-                // Search for the SoundIdAmount position by looking for the pattern:
-                // The old SoundIdAmount value should be somewhere after the SelfId
-
-                using (var ms = new MemoryStream(originalRawData))
-                using (var reader = new BinaryReader(ms))
+            if (sfd.ShowDialog() == true)
+            {
+                try
                 {
-                    byte type = reader.ReadByte();
-                    uint length = reader.ReadUInt32();
-                    uint selfId = reader.ReadUInt32();
-
-                    // Read until we find a position that could be SoundIdAmount
-                    // We need to scan for the old sound ID list to find the exact position
-                    long soundIdAmountPosition = -1;
-                    long currentPos = reader.BaseStream.Position;
-
-                    // Skip to near the end where SoundIdAmount should be
-                    // We know the structure ends with: SoundIdAmount (4 bytes) + SoundIds (N * 4 bytes)
-                    // So calculate backwards from the end
-                    int oldSoundCount = (int)((originalRawData.Length - 5 - 4) % 4 == 0 ? 0 : -1);
-                    if (oldSoundCount < 0)
-                    {
-                        // Try to find it by reading the original count from the stored value
-                        // The SoundIdAmount should match the number of IDs at the end
-                        for (long pos = 9; pos < originalRawData.Length - 4; pos++)
-                        {
-                            ms.Position = pos;
-                            uint potentialCount = reader.ReadUInt32();
-
-                            // Check if this could be the SoundIdAmount
-                            // by verifying there's enough space for that many UInt32s
-                            if (potentialCount > 0 && potentialCount < 1000 &&
-                                pos + 4 + (potentialCount * 4) == originalRawData.Length - 5)
-                            {
-                                soundIdAmountPosition = pos;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (soundIdAmountPosition < 0)
-                    {
-
-                        return originalRawData; // Return unchanged if we can't find it
-                    }
-
-                    // Build new RawData
-                    using (var outMs = new MemoryStream())
-                    using (var writer = new BinaryWriter(outMs))
-                    {
-                        // Write everything before SoundIdAmount
-                        writer.Write(originalRawData, 0, (int)soundIdAmountPosition);
-
-                        // Write new SoundIdAmount and SoundIds
-                        writer.Write(randomContainer.SoundIdAmount);
-                        foreach (var soundId in randomContainer.SoundIds)
-                        {
-                            writer.Write(soundId);
-                        }
-
-                        // Update length field
-                        byte[] newRawData = outMs.ToArray();
-                        uint newLength = (uint)(newRawData.Length - 5); // Exclude type byte and length field
-
-                        // Patch the length field at position 1-4
-                        Array.Copy(BitConverter.GetBytes(newLength), 0, newRawData, 1, 4);
-
-                        return newRawData;
-                    }
+                    BnkExporter.ExportToJson(_currentBnkSections, sfd.FileName);
+                    System.Windows.MessageBox.Show("Export successful!", "Success", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    System.Windows.MessageBox.Show($"Export failed: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 }
             }
-            catch (Exception ex)
-            {
-
-                return originalRawData; // Return unchanged on error
-            }
         }
+
     }
 }

@@ -34,7 +34,9 @@ namespace LoL_Announcer_Editor
                 WemAdditionLogger.Log($"ERROR: WPK file not found: {wpkPath}");
                 return null;
             }
-            var wpkfile = new WpkFile
+            try
+            {
+                var wpkfile = new WpkFile
             {
                 Magic = new byte[4],
                 Version = 0,
@@ -114,12 +116,14 @@ namespace LoL_Announcer_Editor
                         wpkfile.Entries.Add(entry);
                         reader.BaseStream.Seek(afterNamePos, SeekOrigin.Begin);
                     }
-                    catch (EndOfStreamException)
+                    catch (EndOfStreamException ex)
                     {
+                        WemAdditionLogger.LogException("ParseWpkFile - EndOfStreamException", ex);
                         throw;
                     }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
+                        WemAdditionLogger.LogException("ParseWpkFile - Exception reading WEM data", ex);
                         throw;
                     }
                 }
@@ -177,13 +181,15 @@ namespace LoL_Announcer_Editor
             wemInformation.SortedWemDataList.Sort((a, b) => a.Id.CompareTo(b.Id));
 
             WemAdditionLogger.Log($"WPK parsed: {wemInformation.SortedWemDataList.Count} WEM files found");
-            foreach (var wem in wemInformation.SortedWemDataList)
-            {
-                WemAdditionLogger.Log($"  WEM Id={wem.Id}, Length={wem.Length}");
-            }
 
-            wemInformation.GroupedWems = GroupWems(wemInformation.SortedWemDataList, stringHashes);
-            return wemInformation;
+                wemInformation.GroupedWems = GroupWems(wemInformation.SortedWemDataList, stringHashes);
+                return wemInformation;
+            }
+            catch (Exception ex)
+            {
+                WemAdditionLogger.LogException($"ParseWpkFile ({wpkPath})", ex);
+                return null;
+            }
         }
 
         public static List<StringWithChildren> GroupWems(List<AudioData> wemDataList, List<StringHash> stringHashes)

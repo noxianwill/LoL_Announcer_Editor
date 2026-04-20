@@ -21,54 +21,162 @@ namespace LoL_Announcer_Editor
         private string _conversionSettingsWorkUnitId = "";
 
         public void Export(
-            ObservableCollection<TreeNode> rootNodes,
             BNKSections sections,
             Dictionary<uint, string> eventNameLookup,
-            string sourceWwiseProject,
-            string destinationFolder)
+            string projectFolder)
         {
-            if (rootNodes == null || rootNodes.Count == 0)
-                throw new ArgumentException("No parsed data to export");
+            WwiseExporterLogger.LogSection("WWISE PROJECT EXPORT START");
+            WwiseExporterLogger.Log($"Project Folder: {projectFolder}");
+            WwiseExporterLogger.Log($"BNK Version: {sections.BnkVersion}");
+            WwiseExporterLogger.Log($"BNK Stats: {sections.Sounds.Count} Sounds, {sections.Events.Count} Events, {sections.RandomContainers.Count} Containers");
 
-            if (!Directory.Exists(sourceWwiseProject))
-                throw new DirectoryNotFoundException($"Source Wwise project not found: {sourceWwiseProject}");
+            // 1. Path setup
+            string actorMixerWwuPath = Path.Combine(projectFolder, "Actor-Mixer Hierarchy", "Default Work Unit.wwu");
+            string eventsWwuPath = Path.Combine(projectFolder, "Events", "Default Work Unit.wwu");
 
-            var wprojFiles = Directory.GetFiles(sourceWwiseProject, "*.wproj");
-            if (wprojFiles.Length == 0)
-                throw new InvalidOperationException("No .wproj file found in source folder.");
+            WwiseExporterLogger.Log($"Target WWU (Actor): {actorMixerWwuPath}");
+            WwiseExporterLogger.Log($"Target WWU (Events): {eventsWwuPath}");
 
-            string projectName = Path.GetFileNameWithoutExtension(wprojFiles[0]);
-            string actorMixerPath = Path.Combine(sourceWwiseProject, "Actor-Mixer Hierarchy");
-            string eventsPath = Path.Combine(sourceWwiseProject, "Events");
-
-            if (!Directory.Exists(actorMixerPath))
-                throw new DirectoryNotFoundException("Actor-Mixer Hierarchy folder not found");
-            if (!Directory.Exists(eventsPath))
-                throw new DirectoryNotFoundException("Events folder not found");
-
-            // Copy project to destination
-            string destProjectPath = Path.Combine(destinationFolder, projectName + "_LoLTemplate");
-            CopyDirectory(sourceWwiseProject, destProjectPath);
-
-            // Load work units
-            string destActorMixerWwu = Path.Combine(destProjectPath, "Actor-Mixer Hierarchy", "Default Work Unit.wwu");
-            if (!File.Exists(destActorMixerWwu))
+            if (!File.Exists(actorMixerWwuPath))
                 throw new FileNotFoundException("Default Work Unit.wwu not found in Actor-Mixer Hierarchy");
+            if (!File.Exists(eventsWwuPath))
+                throw new FileNotFoundException("Default Work Unit.wwu not found in Events");
 
-            var actorMixerDoc = XDocument.Load(destActorMixerWwu);
+            // 2. Load Work Units
+            WwiseExporterLogger.Log("Loading XML documents...");
+            var actorMixerDoc = XDocument.Load(actorMixerWwuPath);
+            var eventsDoc = XDocument.Load(eventsWwuPath);
+
+            // 3. Extract existing Sound objects from the Default Work Unit
+            var soundMap = ExtractExistingSounds(actorMixerDoc);
+            WwiseExporterLogger.Log($"Sound Map build complete. {soundMap.Count} sounds ready for re-parenting.");
+
+            if (soundMap.Count == 0)
+            {
+                WwiseExporterLogger.LogError("CRITICAL: soundMap is empty! No sounds were found to organize.");
+                throw new InvalidOperationException("No 'Sound' objects found in your Wwise project. " +
+                    "Please make sure you have imported the .wav files into the 'Default Work Unit' of the Actor-Mixer Hierarchy and saved the project before running this export.");
+            }
+
+            // 4. Build Actor-Mixer Hierarchy
+            _containerIdToGuid.Clear();
+            var workUnitElement = actorMixerDoc.Descendants().FirstOrDefault(e => e.Name.LocalName == "WorkUnit");
+            if (workUnitElement == null)
+            {
+                WwiseExporterLogger.LogError("Could not find 'WorkUnit' element in XML.");
+                throw new InvalidOperationException("Could not find 'WorkUnit' element in Actor-Mixer Hierarchy");
+            }
+
+            WwiseExporterLogger.Log($"Found WorkUnit: {workUnitElement.Attribute("Name")?.Value} (ID: {workUnitElement.Attribute("ID")?.Value})");
+
+            var childrenList = workUnitElement.Elements().FirstOrDefault(e => e.Name.LocalName == "ChildrenList");
+            if (childrenList == null)
+            {
+                WwiseExporterLogger.Log("ChildrenList not found, creating new one.");
+                childrenList = new XElement(workUnitElement.Name.Namespace + "ChildrenList");
+                workUnitElement.Add(childrenList);
+            }
+            
+            WwiseExporterLogger.Log("Clearing existing children from Default Work Unit...");
+            childrenList.RemoveAll();
+
+            // Store references for event creation
+            WwiseExporterLogger.Log("Extracting project references (Buses, Conversions)...");
             ExtractReferences(actorMixerDoc);
 
-            // Build hierarchy
-            var containers = BuildActorMixerHierarchy(sections, eventNameLookup);
-            ModifyActorMixerWorkUnit(actorMixerDoc, containers);
-            actorMixerDoc.Save(destActorMixerWwu);
+            // Build Containers
+            WwiseExporterLogger.Log("Building Actor-Mixer Hierarchy (Containers and Sounds)...");
+            var containers = BuildActorMixerHierarchy(sections, eventNameLookup, soundMap, projectFolder);
+            WwiseExporterLogger.Log($"Generated {containers.Count} top-level containers/sounds.");
 
-            // Build events
-            string destEventsWwu = Path.Combine(destProjectPath, "Events", "Default Work Unit.wwu");
-            var eventsDoc = XDocument.Load(destEventsWwu);
-            var eventElements = BuildEventsHierarchy(sections, eventNameLookup);
-            ModifyEventsWorkUnit(eventsDoc, eventElements);
-            eventsDoc.Save(destEventsWwu);
+            foreach (var container in containers)
+            {
+                childrenList.Add(container);
+            }
+
+            // 5. Handle Unreferenced Sounds
+            var usedWemIds = GetUsedWemIds(sections);
+            var unreferencedSounds = soundMap.Where(kvp => !usedWemIds.Contains(kvp.Key)).Select(kvp => kvp.Value).ToList();
+            if (unreferencedSounds.Count > 0)
+            {
+                var unreferencedFolder = new XElement("Folder",
+                    new XAttribute("Name", "Unreferenced_Sounds"),
+                    new XAttribute("ID", GenerateGuid()),
+                    new XAttribute("ShortID", GenerateShortId()),
+                    new XElement("ChildrenList", unreferencedSounds));
+                childrenList.Add(unreferencedFolder);
+            }
+
+            // 6. Save Actor-Mixer
+            actorMixerDoc.Save(actorMixerWwuPath);
+
+            // 7. Build Events
+            var events = BuildEventsHierarchy(sections, eventNameLookup);
+            ModifyEventsWorkUnit(eventsDoc, events);
+            eventsDoc.Save(eventsWwuPath);
+        }
+
+        private HashSet<uint> GetUsedWemIds(BNKSections sections)
+        {
+            var used = new HashSet<uint>();
+            foreach (var s in sections.Sounds)
+                used.Add(s.SourceId);
+            return used;
+        }
+
+        private Dictionary<uint, XElement> ExtractExistingSounds(XDocument doc)
+        {
+            var soundMap = new Dictionary<uint, XElement>();
+            WwiseExporterLogger.Log("--- STARTING SOUND EXTRACTION ---");
+
+            // Use LocalName to ignore namespaces which often break XDocument searches in Wwise files
+            var soundElements = doc.Descendants().Where(e => e.Name.LocalName == "Sound").ToList();
+            WwiseExporterLogger.Log($"Found {soundElements.Count} raw 'Sound' elements in the WWU file.");
+
+            foreach (var soundEl in soundElements)
+            {
+                string name = soundEl.Attribute("Name")?.Value;
+                if (string.IsNullOrEmpty(name))
+                {
+                    WwiseExporterLogger.Log("  Warning: Found Sound element with no Name attribute.");
+                    continue;
+                }
+
+                // Strip extension if present (e.g. "899480.wav" -> "899480")
+                string cleanName = Path.GetFileNameWithoutExtension(name);
+                
+                // Try to find a numeric ID in the name
+                uint wemId = 0;
+                bool foundId = false;
+
+                if (uint.TryParse(cleanName, out wemId))
+                {
+                    foundId = true;
+                }
+                else
+                {
+                    // Try regex if simple parse fails (handles "Sound_899480" etc)
+                    var match = System.Text.RegularExpressions.Regex.Match(cleanName, @"\d+");
+                    if (match.Success && uint.TryParse(match.Value, out wemId))
+                    {
+                        foundId = true;
+                    }
+                }
+
+                if (foundId)
+                {
+                    WwiseExporterLogger.Log($"  Extracted WEM ID {wemId} from Wwise object '{name}'");
+                    var clone = new XElement(soundEl);
+                    soundMap[wemId] = clone;
+                }
+                else
+                {
+                    WwiseExporterLogger.Log($"  Warning: Could not extract numeric ID from sound name '{name}'");
+                }
+            }
+
+            WwiseExporterLogger.Log($"--- EXTRACTION COMPLETE: {soundMap.Count} unique IDs mapped ---");
+            return soundMap;
         }
 
         private void CopyDirectory(string sourceDir, string destDir)
@@ -88,18 +196,16 @@ namespace LoL_Announcer_Editor
 
         private void ExtractReferences(XDocument doc)
         {
-            var workUnit = doc.Descendants("WorkUnit")
-                .FirstOrDefault(wu => wu.Attribute("Name")?.Value == "Default Work Unit");
+            var workUnit = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "WorkUnit" && e.Attribute("Name")?.Value == "Default Work Unit");
 
             if (workUnit != null)
                 _actorMixerWorkUnitId = workUnit.Attribute("ID")?.Value ?? "";
 
-            var outputBusRef = doc.Descendants("Reference")
-                .FirstOrDefault(r => r.Attribute("Name")?.Value == "OutputBus");
+            var outputBusRef = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "Reference" && e.Attribute("Name")?.Value == "OutputBus");
 
             if (outputBusRef != null)
             {
-                var objRef = outputBusRef.Element("ObjectRef");
+                var objRef = outputBusRef.Elements().FirstOrDefault(e => e.Name.LocalName == "ObjectRef");
                 if (objRef != null)
                 {
                     _masterBusId = objRef.Attribute("ID")?.Value ?? "{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}";
@@ -107,12 +213,11 @@ namespace LoL_Announcer_Editor
                 }
             }
 
-            var conversionRef = doc.Descendants("Reference")
-                .FirstOrDefault(r => r.Attribute("Name")?.Value == "Conversion");
+            var conversionRef = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "Reference" && e.Attribute("Name")?.Value == "Conversion");
 
             if (conversionRef != null)
             {
-                var objRef = conversionRef.Element("ObjectRef");
+                var objRef = conversionRef.Elements().FirstOrDefault(e => e.Name.LocalName == "ObjectRef");
                 if (objRef != null)
                 {
                     _conversionSettingsId = objRef.Attribute("ID")?.Value ?? "";
@@ -123,7 +228,9 @@ namespace LoL_Announcer_Editor
 
         private List<XElement> BuildActorMixerHierarchy(
             BNKSections sections,
-            Dictionary<uint, string> eventNameLookup)
+            Dictionary<uint, string> eventNameLookup,
+            Dictionary<uint, XElement> soundMap,
+            string projectFolder)
         {
             var containers = new List<XElement>();
             _containerIdToGuid.Clear();
@@ -155,29 +262,82 @@ namespace LoL_Announcer_Editor
                             containerGuid,
                             containerShortId,
                             randomContainer,
-                            sections);
+                            sections,
+                            soundMap,
+                            projectFolder);
 
                         containers.Add(containerElement);
                     }
                     else
                     {
-                        var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == eventAction.SoundObjectId);
-                        if (sound != null)
+                        var switchContainer = sections.SwitchContainers.FirstOrDefault(s => s.SelfId == eventAction.SoundObjectId);
+                        if (switchContainer != null)
                         {
-                            if (_containerIdToGuid.ContainsKey(eventAction.SoundObjectId))
+                            if (_containerIdToGuid.ContainsKey(switchContainer.SelfId))
                                 continue;
 
                             string containerGuid = GenerateGuid();
                             string containerShortId = GenerateShortId();
-                            _containerIdToGuid[eventAction.SoundObjectId] = containerGuid;
+                            _containerIdToGuid[switchContainer.SelfId] = containerGuid;
 
-                            var containerElement = CreateRandomSequenceContainerForSingleSound(
+                            var containerElement = CreateSwitchContainer(
                                 eventName,
                                 containerGuid,
                                 containerShortId,
-                                sound);
+                                switchContainer,
+                                sections,
+                                soundMap,
+                                projectFolder);
 
                             containers.Add(containerElement);
+                        }
+                        else
+                        {
+                            var actorMixer = sections.ActorMixers.FirstOrDefault(a => a.SelfId == eventAction.SoundObjectId);
+                            if (actorMixer != null)
+                            {
+                                if (_containerIdToGuid.ContainsKey(actorMixer.SelfId))
+                                    continue;
+
+                                string containerGuid = GenerateGuid();
+                                string containerShortId = GenerateShortId();
+                                _containerIdToGuid[actorMixer.SelfId] = containerGuid;
+
+                                var containerElement = CreateActorMixer(
+                                    eventName,
+                                    containerGuid,
+                                    containerShortId,
+                                    actorMixer,
+                                    sections,
+                                    soundMap,
+                                    projectFolder);
+
+                                containers.Add(containerElement);
+                            }
+                            else
+                            {
+                                var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == eventAction.SoundObjectId);
+                                if (sound != null)
+                                {
+                                    if (_containerIdToGuid.ContainsKey(eventAction.SoundObjectId))
+                                        continue;
+
+                                    string containerGuid = GenerateGuid();
+                                    string containerShortId = GenerateShortId();
+                                    _containerIdToGuid[eventAction.SoundObjectId] = containerGuid;
+
+                                    var containerElement = CreateRandomSequenceContainerForSingleSound(
+                                        eventName,
+                                        containerGuid,
+                                        containerShortId,
+                                        sound,
+                                        soundMap,
+                                        sections,
+                                        projectFolder);
+
+                                    containers.Add(containerElement);
+                                }
+                            }
                         }
                     }
                 }
@@ -191,9 +351,12 @@ namespace LoL_Announcer_Editor
             string guid,
             string shortId,
             RandomContainer container,
-            BNKSections sections)
+            BNKSections sections,
+            Dictionary<uint, XElement> soundMap,
+            string projectFolder)
         {
-            var childrenList = new XElement("ChildrenList");
+            var childrenList = new XElement(XName.Get("ChildrenList", guid.Contains("{") ? "" : ""));
+            WwiseExporterLogger.Log($"Building Container '{name}' (ID: {container.SelfId})");
 
             var childIds = container.ChildrenIds.Count > 0
                 ? container.ChildrenIds
@@ -204,10 +367,20 @@ namespace LoL_Announcer_Editor
                 var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == childId);
                 if (sound != null)
                 {
-                    uint wemId = sound.StreamFileID != 0 ? sound.StreamFileID : sound.FileId;
-                    var soundElement = CreateSoundElement(wemId, sound.SelfId);
-                    childrenList.Add(soundElement);
-                    continue;
+                    if (soundMap.TryGetValue(sound.SourceId, out var soundElement))
+                    {
+                        WwiseExporterLogger.Log($"  + Adding Sound {sound.SourceId} (SelfId: {childId})");
+                        var repairedSound = RepairSoundElement(new XElement(soundElement), sound.SourceId, projectFolder);
+                        childrenList.Add(repairedSound);
+                        continue;
+                    }
+                    else
+                    {
+                        WwiseExporterLogger.Log($"  * Sound {sound.SourceId} (SelfId: {childId}) NOT found in project! Creating it...");
+                        var newSound = CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder);
+                        childrenList.Add(newSound);
+                        continue;
+                    }
                 }
 
                 var nestedContainer = sections.RandomContainers.FirstOrDefault(r => r.SelfId == childId);
@@ -220,11 +393,12 @@ namespace LoL_Announcer_Editor
                     foreach (var nestedSoundId in nestedSoundIds)
                     {
                         var nestedSound = sections.Sounds.FirstOrDefault(s => s.SelfId == nestedSoundId);
-                        if (nestedSound == null) continue;
-
-                        uint wemId = nestedSound.StreamFileID != 0 ? nestedSound.StreamFileID : nestedSound.FileId;
-                        var soundElement = CreateSoundElement(wemId, nestedSound.SelfId);
-                        childrenList.Add(soundElement);
+                        if (nestedSound != null && soundMap.TryGetValue(nestedSound.SourceId, out var nestedSoundElement))
+                        {
+                            WwiseExporterLogger.Log($"  + Adding Nested Sound {nestedSound.SourceId} (SelfId: {nestedSoundId})");
+                            var repairedSound = RepairSoundElement(new XElement(nestedSoundElement), nestedSound.SourceId, projectFolder);
+                            childrenList.Add(repairedSound);
+                        }
                     }
                 }
             }
@@ -249,13 +423,18 @@ namespace LoL_Announcer_Editor
             string name,
             string guid,
             string shortId,
-            Sound sound)
+            Sound sound,
+            Dictionary<uint, XElement> soundMap,
+            BNKSections sections,
+            string projectFolder)
         {
             var childrenList = new XElement("ChildrenList");
 
-            uint wemId = sound.StreamFileID != 0 ? sound.StreamFileID : sound.FileId;
-            var soundElement = CreateSoundElement(wemId, sound.SelfId);
-            childrenList.Add(soundElement);
+            if (soundMap.TryGetValue(sound.SourceId, out var soundElement))
+            {
+                var repairedSound = RepairSoundElement(new XElement(soundElement), sound.SourceId, projectFolder);
+                childrenList.Add(repairedSound);
+            }
 
             var containerElement = new XElement("RandomSequenceContainer",
                 new XAttribute("Name", name),
@@ -276,7 +455,7 @@ namespace LoL_Announcer_Editor
         /// <summary>
         /// Create a Sound element programmatically
         /// </summary>
-        private XElement CreateSoundElement(uint wemId, uint soundId)
+        private XElement CreateSoundElement(uint wemId, uint soundId, string projectFolder)
         {
             string soundGuid = GenerateGuid();
             string soundShortId = GenerateShortId();
@@ -290,21 +469,95 @@ namespace LoL_Announcer_Editor
                 new XElement("ReferenceList",
                     CreateOutputBusReference(),
                     CreateConversionReference()),
-                new XElement("ChildrenList"),
+                new XElement("ChildrenList",
+                    new XElement("AudioFileSource",
+                        new XAttribute("Name", wemName),
+                        new XAttribute("ID", audioSourceGuid),
+                        new XElement("Language", "SFX"),
+                        new XElement("AudioFile", $"{wemId}.wav"))),
                 new XElement("ActiveSourceList",
                     new XElement("ActiveSource",
                         new XAttribute("Name", wemName),
                         new XAttribute("ID", audioSourceGuid),
-                        new XAttribute("Platform", "Linked"))),
-                new XElement("SourceList",
-                    new XElement("Source",
-                        new XAttribute("ID", audioSourceGuid),
-                        new XAttribute("Platform", "Linked"),
-                        new XElement("AudioFileSource",
-                            new XAttribute("Name", wemName),
-                            new XAttribute("ID", audioSourceGuid)))));
+                        new XAttribute("Platform", "Linked"))));
 
-            return soundElement;
+            return RepairSoundElement(soundElement, wemId, projectFolder);
+        }
+
+        private XElement CreateSwitchContainer(string name, string guid, string shortId, SwitchContainer sc, BNKSections sections, Dictionary<uint, XElement> soundMap, string projectFolder)
+        {
+            var childrenList = new XElement("ChildrenList");
+            foreach (var childId in sc.Children)
+            {
+                var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == childId);
+                if (sound != null)
+                {
+                    if (soundMap.TryGetValue(sound.SourceId, out var soundEl))
+                        childrenList.Add(RepairSoundElement(new XElement(soundEl), sound.SourceId, projectFolder));
+                    else
+                        childrenList.Add(CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder));
+                }
+            }
+
+            return new XElement("SwitchContainer",
+                new XAttribute("Name", name),
+                new XAttribute("ID", guid),
+                new XAttribute("ShortID", shortId),
+                new XElement("ReferenceList", CreateOutputBusReference()),
+                childrenList);
+        }
+
+        private XElement CreateActorMixer(string name, string guid, string shortId, ActorMixer am, BNKSections sections, Dictionary<uint, XElement> soundMap, string projectFolder)
+        {
+            var childrenList = new XElement("ChildrenList");
+            foreach (var childId in am.Children)
+            {
+                var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == childId);
+                if (sound != null)
+                {
+                    if (soundMap.TryGetValue(sound.SourceId, out var soundEl))
+                        childrenList.Add(RepairSoundElement(new XElement(soundEl), sound.SourceId, projectFolder));
+                    else
+                        childrenList.Add(CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder));
+                }
+            }
+
+            return new XElement("ActorMixer",
+                new XAttribute("Name", name),
+                new XAttribute("ID", guid),
+                new XAttribute("ShortID", shortId),
+                new XElement("ReferenceList", CreateOutputBusReference()),
+                childrenList);
+        }
+
+        private XElement RepairSoundElement(XElement soundEl, uint wemId, string projectPath)
+        {
+            // Find AudioFile element
+            var audioFileEl = soundEl.Descendants().FirstOrDefault(e => e.Name.LocalName == "AudioFile");
+            if (audioFileEl == null) return soundEl;
+
+            // Search for the file in Voices first, then SFX
+            string voicesPath = $"Voices\\English(US)\\{wemId}.wav";
+            string sfxPath = $"SFX\\{wemId}.wav";
+            
+            string fullVoicesPath = Path.Combine(projectPath, "Originals", voicesPath);
+            string fullSfxPath = Path.Combine(projectPath, "Originals", sfxPath);
+
+            if (File.Exists(fullSfxPath))
+            {
+                audioFileEl.Value = $"{wemId}.wav"; // Just the filename
+                // Also update Language if it exists
+                var langEl = audioFileEl.Parent?.Elements().FirstOrDefault(e => e.Name.LocalName == "Language");
+                if (langEl != null) langEl.Value = "SFX";
+            }
+            else if (File.Exists(fullVoicesPath))
+            {
+                audioFileEl.Value = $"{wemId}.wav"; // Just the filename
+                var langEl = audioFileEl.Parent?.Elements().FirstOrDefault(e => e.Name.LocalName == "Language");
+                if (langEl != null) langEl.Value = "English(US)";
+            }
+
+            return soundEl;
         }
 
         private XElement CreateOutputBusReference()

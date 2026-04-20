@@ -51,23 +51,27 @@ namespace LoL_Announcer_Editor
             List<uint>? originalOffsets = null,         // Optional: exact original entry offsets per slot
             Dictionary<int, WpkFileEntry>? slotIndexToEntry = null) // Optional: original entry headers per slot
         {
-            const int clamp = 8;
-
             int totalSlots = originalSlotCount + newWemFiles.Count;
-
-            // Prepare entry offsets table
             int[] entryOffsets = new int[totalSlots];
             for (int i = 0; i < originalSlotCount; i++)
             {
                 entryOffsets[i] = 0;
             }
 
-            using (var wpkFile = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
-            using (var writer = new BinaryWriter(wpkFile))
+            try
             {
-                // Write header: "r3d2" magic, version 1, slot count
-                writer.Write(Encoding.ASCII.GetBytes("r3d2\x01\x00\x00\x00"));
-                writer.Write(totalSlots);
+                WemAdditionLogger.LogSection("WRITING WPK FILE (SLOT PRESERVATION MODE)");
+                WemAdditionLogger.Log($"Output Path: {outputPath}");
+                WemAdditionLogger.Log($"Original Slot Count: {originalSlotCount}, New WEMs: {newWemFiles.Count}");
+
+                const int clamp = 8;
+
+                using (var wpkFile = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
+                using (var writer = new BinaryWriter(wpkFile))
+                {
+                    // Write header: "r3d2" magic, version 1, slot count
+                    writer.Write(Encoding.ASCII.GetBytes("r3d2\x01\x00\x00\x00"));
+                    writer.Write(totalSlots);
 
                 // Reserve space for offset table
                 long offsetTableStart = wpkFile.Position;
@@ -267,7 +271,16 @@ namespace LoL_Announcer_Editor
                     wpkFile.Position = offsetTableStart + i * 4;
                     writer.Write(entryOffsets[i]);
                 }
+
+                WemAdditionLogger.LogSuccess($"WPK file written successfully to {outputPath}. Total size: {new FileInfo(outputPath).Length} bytes.");
+                }
             }
+            catch (Exception ex)
+            {
+                WemAdditionLogger.LogException("WriteWpkFilePreservingSlots", ex);
+                throw;
+            }
+            VerifyWpkIntegrity(outputPath, totalSlots, entryOffsets);
         }
 
         // Write WPK file from a list of AudioData (legacy method - does not preserve slots)
@@ -397,6 +410,62 @@ namespace LoL_Announcer_Editor
                     bnkFile.Position += DiffToClamp((int)bnkFile.Position, clamp);
                     writer.Write(wemFiles[i].Data);
                 }
+            }
+        }
+        private static void VerifyWpkIntegrity(string path, int slotCount, int[] offsets)
+        {
+            WemAdditionLogger.LogSection("WPK BIT-LEVEL INTEGRITY CHECK");
+            try
+            {
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
+                using (var reader = new BinaryReader(fs))
+                {
+                    // Check magic
+                    byte[] magic = reader.ReadBytes(4);
+                    if (Encoding.ASCII.GetString(magic) != "r3d2")
+                        WemAdditionLogger.Log("!!! WARNING: WPK Magic 'r3d2' missing!");
+                    
+                    // Check slot count
+                    fs.Position = 8;
+                    int actualSlots = reader.ReadInt32();
+                    WemAdditionLogger.Log($"Verified Slot Count: {actualSlots} (Expected: {slotCount})");
+
+                    // Check individual offsets and WEM signatures
+                    int validWems = 0;
+                    for (int i = 0; i < slotCount; i++)
+                    {
+                        if (offsets[i] != 0)
+                        {
+                            fs.Position = offsets[i];
+                            int dataOffset = reader.ReadInt32();
+                            if (dataOffset == 0)
+                            {
+                                WemAdditionLogger.Log($"!!! CRITICAL: Slot {i} has header at {offsets[i]} but data offset is ZERO!");
+                                continue;
+                            }
+                            
+                            fs.Position = dataOffset;
+                            byte[] sig = reader.ReadBytes(4);
+                            
+                            // WEM files start with RIFF or WAVE or have a specific header
+                            // We just want to make sure it's not zeros
+                            if (sig[0] == 0 && sig[1] == 0 && sig[2] == 0 && sig[3] == 0)
+                            {
+                                WemAdditionLogger.Log($"!!! CRITICAL: Slot {i} at data offset {dataOffset} contains ZEROS!");
+                            }
+                            else
+                            {
+                                validWems++;
+                            }
+                        }
+                    }
+                    WemAdditionLogger.Log($"Verified {validWems} active WEM slots with non-zero data.");
+                }
+                WemAdditionLogger.Log("WPK BIT-LEVEL CHECK COMPLETE");
+            }
+            catch (Exception ex)
+            {
+                WemAdditionLogger.Log($"!!! WPK INTEGRITY ERROR: {ex.Message}");
             }
         }
     }

@@ -1,245 +1,354 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace LoL_Announcer_Editor
 {
-    public class SoundStructure
-    {
-        public uint PluginID { get; set; }
-        public ushort Type { get; set; }         // 2 bytes
-        public ushort Company { get; set; }      // 2 bytes
-        public byte StreamType { get; set; }     // 1 byte
-        public int SourceID { get; set; }
-        public int InMemoryMediaSize { get; set; }
-        public byte SourceBits { get; set; }     // 1 byte
-        public bool IsLanguageSpecific { get; set; }
-        public bool Prefetch { get; set; }
-        public bool NonCachable { get; set; }
-        public bool HasSource { get; set; }
-        public byte BIsOverrideParentFX { get; set; }     // 1 byte
-        public byte NumFx { get; set; }                   // 1 byte
-        public byte BIsOverrideParentMetadata { get; set; } // 1 byte
-        public byte NumPluginMetadata { get; set; }       // 1 byte (added for completeness)
-        public byte BOverrideAttachmentParams { get; set; } // 1 byte (added for completeness)
-        public uint OverrideBusID { get; set; }           // 4 bytes (added for completeness)
-        public uint DirectParentID { get; set; }          // 4 bytes (added for completeness)
-    }
-
-    public class Sound
-    {
-        public uint SelfId { get; set; }
-        public uint Unknown1 { get; set; } // 4 bytes after SelfId
-        public byte IsStreamed { get; set; }
-        public byte[] Unknown2 { get; set; } // 3 bytes if bnkVersion <= 0x59
-        public byte[] Unknown3 { get; set; } // 4 bytes if bnkVersion <= 0x70
-        public uint FileId { get; set; }
-        public byte[] RawData { get; set; } // All remaining bytes for this object
-        // Announcer/voice fields (after basic Sound fields):
-        public int Reserved0 { get; set; }
-        public int StreamSourceType { get; set; }  // 0=Embedded, 1=Streamed, 2=Streamed(ZeroLatency)
-        public uint StreamFileID { get; set; }
-        public int StreamSourceID { get; set; }
-        public int StreamFileOffset { get; set; }  // Only if embedded (StreamSourceType == 0)
-        public int StreamFileLength { get; set; }  // Only if embedded (StreamSourceType == 0)
-        public byte SoundType { get; set; }        // 0=SFX, 1=Voice
-        public SoundStructure SoundStructure { get; set; }
-    }
-
-    public class MusicTrack
-    {
-        public uint SelfId { get; set; }
-        public uint TrackCount { get; set; }
-        public List<uint> FileIds { get; set; } = new List<uint>();
-        public bool HasSwitchIds { get; set; }
-        public uint SwitchGroupId { get; set; }
-        public List<uint> SwitchIds { get; set; } = new List<uint>();
-        public uint ParentId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class MusicContainer
-    {
-        public uint SelfId { get; set; }
-        public uint MusicSwitchId { get; set; }
-        public uint SoundObjectId { get; set; }
-        public uint MusicTrackIdAmount { get; set; }
-        public List<uint> MusicTrackIds { get; set; } = new List<uint>();
-        public byte[] RawData { get; set; }
-    }
-
-    public class MusicSwitch
-    {
-        public uint SelfId { get; set; }
-        public uint ParentId { get; set; }
-        public uint NumChildren { get; set; }
-        public List<uint> Children { get; set; } = new List<uint>();
-        public uint NumArguments { get; set; }
-        public List<MusicSwitchArgument> Arguments { get; set; } = new List<MusicSwitchArgument>();
-        public uint NumNodes { get; set; }
-        public List<MusicSwitchNode> Nodes { get; set; } = new List<MusicSwitchNode>();
-        public byte[] RawData { get; set; }
-    }
-
-    public class MusicSwitchArgument
-    {
-        public uint GroupId { get; set; }
-        public byte GroupType { get; set; }
-    }
-
-    public class MusicSwitchNode
-    {
-        public uint Key { get; set; }
-        public uint AudioId { get; set; }
-    }
-
-    public class EventAction
-    {
-        public uint SelfId { get; set; }
-        public byte Scope { get; set; }
-        public byte Type { get; set; }
-        public uint SoundObjectId { get; set; }
-        public uint SwitchGroupId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class Event
-    {
-        public uint SelfId { get; set; }
-        public byte EventAmount { get; set; }
-        public List<uint> EventIds { get; set; } = new List<uint>();
-        public byte[] RawData { get; set; }
-    }
-
-    public class PlaylistEntry
-    {
-        public uint PlayID { get; set; }      // Sound ID (4 bytes)
-        public uint Weight { get; set; }      // Weight/probability value (4 bytes)
-        public uint RsGroupID { get; set; }   // Random/Sequential group ID (4 bytes)
-    }
-
-    public class RandomContainer
-    {
-        public uint SelfId { get; set; }
-        public uint SwitchContainerId { get; set; }
-        public uint SoundIdAmount { get; set; }  // Kept for backward compatibility (= PlaylistLength)
-        public List<uint> SoundIds { get; set; } = new List<uint>();  // Kept for backward compatibility (= PlayIDs from Playlist)
-        public List<PlaylistEntry> Playlist { get; set; } = new List<PlaylistEntry>();  // Actual 8-byte structure (playID + weight)
-        public byte[] RawData { get; set; }
-
-        // New fields for proper parsing (matching Python parser)
-        public uint ChildrenCount { get; set; }  // ulNumChilds (u32)
-        public List<uint> ChildrenIds { get; set; } = new List<uint>();  // pChildren array
-        public ushort PlaylistLength { get; set; }  // ulPlayListItem (u16)
-    }
-
-    public class SwitchContainer
-    {
-        public uint SelfId { get; set; }
-        public uint ParentId { get; set; }
-        public byte GroupType { get; set; }
-        public uint GroupId { get; set; }
-        public uint NumChildren { get; set; }
-        public List<uint> Children { get; set; } = new List<uint>();
-        public byte[] RawData { get; set; }
-    }
-
-    public class ActorMixer
-    {
-        public uint SelfId { get; set; }
-        public uint ParentId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class Settings
-    {
-        public uint SelfId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class AudioBus
-    {
-        public uint SelfId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class BlendContainer
-    {
-        public uint SelfId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class Attenuation
-    {
-        public uint SelfId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class DialogueEvent
-    {
-        public uint SelfId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class MotionBus
-    {
-        public uint SelfId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class MotionFx
-    {
-        public uint SelfId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class Effect
-    {
-        public uint SelfId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class AuxiliaryBus
-    {
-        public uint SelfId { get; set; }
-        public byte[] RawData { get; set; }
-    }
-
-    public class BnkObjectRecord
-    {
-        public byte Type { get; set; }
-        public uint Length { get; set; }
-        public byte[] RawData { get; set; } // Full object: type + length + data
-        public object? ParsedObject { get; set; } // Sound, Event, etc., or null for unknown
-        public bool IsChanged { get; set; } = false;
-        public uint? ObjectId { get; set; } // For quick lookup (SelfId, etc.)
-    }
-
-    public class BnkFullFidelity
-    {
-        public List<BnkObjectRecord> AllObjectsInOrder { get; set; } = new List<BnkObjectRecord>();
-        public uint BnkVersion { get; set; } = 0x86; // Default to 0x86, will be set during parsing
-    }
-
     public class BNKSections
     {
+        public uint BnkVersion { get; set; }
+        public List<Settings> Settings { get; set; } = new List<Settings>();
         public List<Sound> Sounds { get; set; } = new List<Sound>();
         public List<EventAction> EventActions { get; set; } = new List<EventAction>();
         public List<Event> Events { get; set; } = new List<Event>();
         public List<RandomContainer> RandomContainers { get; set; } = new List<RandomContainer>();
         public List<SwitchContainer> SwitchContainers { get; set; } = new List<SwitchContainer>();
         public List<ActorMixer> ActorMixers { get; set; } = new List<ActorMixer>();
-        public List<Settings> Settings { get; set; } = new List<Settings>();
         public List<AudioBus> AudioBuses { get; set; } = new List<AudioBus>();
         public List<BlendContainer> BlendContainers { get; set; } = new List<BlendContainer>();
+        public List<MusicSegment> MusicSegments { get; set; } = new List<MusicSegment>();
+        public List<MusicTrack> MusicTracks { get; set; } = new List<MusicTrack>();
+        public List<MusicSwitch> MusicSwitches { get; set; } = new List<MusicSwitch>();
+        public List<MusicPlaylist> MusicPlaylists { get; set; } = new List<MusicPlaylist>();
         public List<Attenuation> Attenuations { get; set; } = new List<Attenuation>();
         public List<DialogueEvent> DialogueEvents { get; set; } = new List<DialogueEvent>();
         public List<MotionBus> MotionBuses { get; set; } = new List<MotionBus>();
         public List<MotionFx> MotionFxs { get; set; } = new List<MotionFx>();
         public List<Effect> Effects { get; set; } = new List<Effect>();
         public List<AuxiliaryBus> AuxiliaryBuses { get; set; } = new List<AuxiliaryBus>();
-        public List<MusicContainer> MusicSegments { get; set; } = new List<MusicContainer>();
-        public List<MusicTrack> MusicTracks { get; set; } = new List<MusicTrack>();
-        public List<MusicSwitch> MusicSwitches { get; set; } = new List<MusicSwitch>();
-        public List<MusicContainer> MusicPlaylists { get; set; } = new List<MusicContainer>();
     }
-} 
+
+    /// <summary>
+    /// One HIRC object record. RawData is only kept for object types we do not
+    /// fully serialize ourselves (truly unknown type IDs). For all known types
+    /// the writer uses the ParsedObject exclusively.
+    /// </summary>
+    public class BnkObjectRecord
+    {
+        public byte Type { get; set; }
+        public uint Length { get; set; }
+        public uint? ObjectId { get; set; }
+        public object ParsedObject { get; set; }
+        /// <summary>
+        /// Kept ONLY for unknown/unhandled type IDs so the writer can round-trip
+        /// them unchanged. For all known types this is null after parsing.
+        /// </summary>
+        public byte[] RawData { get; set; }
+        public bool IsChanged { get; set; }
+    }
+
+    public class BnkFullFidelity
+    {
+        public uint BnkVersion { get; set; }
+        public List<BnkObjectRecord> AllObjectsInOrder { get; set; } = new List<BnkObjectRecord>();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Shared sub-structures
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public class PropValue
+    {
+        public byte ID { get; set; }
+        public float Value { get; set; }
+    }
+
+    public class PropValueInt
+    {
+        public byte ID { get; set; }
+        public int Value { get; set; }
+    }
+
+    public class FxInfo
+    {
+        public byte Index { get; set; }
+        public uint Id { get; set; }
+        public byte IsShareSet { get; set; }
+        public byte IsRendered { get; set; }
+    }
+
+    public class MetadataEntry
+    {
+        public uint Id { get; set; }
+        public byte Value { get; set; }
+    }
+
+    public class StateInstance
+    {
+        public uint StateId { get; set; }
+        public uint InstanceId { get; set; }
+    }
+
+    public class StateGroup
+    {
+        public uint Id { get; set; }
+        public byte SyncType { get; set; }
+        public List<StateInstance> States { get; set; } = new List<StateInstance>();
+    }
+
+    public class RtpcPoint
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public uint Shape { get; set; }
+    }
+
+    /// <summary>
+    /// One RTPC binding. Field names match the Wwise SDK / wwiser naming.
+    /// Layout: ControlId(4) ParamId(1) CurveId(4) Scaling(1) PointCount(2) Points[PointCount]
+    /// </summary>
+    public class RtpcEntry
+    {
+        public uint ControlId { get; set; }        // RTPCID
+        public byte ParamId { get; set; }          // RTPC_paramID (volume/pitch/…)
+        public uint CurveId { get; set; }          // RtpcCurveID
+        public byte Scaling { get; set; }          // eScaling
+        public List<RtpcPoint> Points { get; set; } = new List<RtpcPoint>();
+    }
+
+    /// <summary>
+    /// Common properties shared by every Wwise sound node.
+    /// All fields are named after their Wwise SDK counterparts.
+    /// </summary>
+    public class NodeBaseParams
+    {
+        public byte OverrideParentFX { get; set; }
+        public byte NumFx { get; set; }
+        public byte FXBypassBits { get; set; }
+        public List<FxInfo> FxInfos { get; set; } = new List<FxInfo>();
+
+        public byte OverrideParentMetadata { get; set; }
+        public byte NumMetadata { get; set; }
+        public List<MetadataEntry> Metadata { get; set; } = new List<MetadataEntry>();
+
+        public byte OverrideAttachmentParams { get; set; }
+        public uint OutputBusId { get; set; }       // OverrideBusID
+        public uint DirectParentId { get; set; }    // DirectParentID
+        public byte OverrideParentPriority { get; set; }
+        public byte OffsetPriority { get; set; }
+
+        public List<PropValue> Props { get; set; } = new List<PropValue>();
+        public List<PropValueInt> PropsInt { get; set; } = new List<PropValueInt>();
+
+        public byte PositioningBits { get; set; }
+        public byte Has3dPositioning { get; set; } // Only present when relevant bits are set
+
+        public byte AuxBits { get; set; }
+        public uint AuxBus0 { get; set; }
+        public uint AuxBus1 { get; set; }
+        public uint AuxBus2 { get; set; }
+        public uint AuxBus3 { get; set; }
+
+        // State properties
+        public List<byte[]> StateProps { get; set; } = new List<byte[]>(); // 3 bytes each
+        public List<StateGroup> StateGroups { get; set; } = new List<StateGroup>();
+
+        // RTPCs
+        public List<RtpcEntry> Rtpcs { get; set; } = new List<RtpcEntry>();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // HIRC object types
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public class Settings
+    {
+        public uint SelfId { get; set; }
+        public byte NumSettings { get; set; }
+        public List<byte> SettingTypes { get; set; } = new List<byte>();
+        public List<float> SettingValues { get; set; } = new List<float>();
+    }
+
+    /// <summary>Type 2 — SFX / Voice sound object.</summary>
+    public class Sound
+    {
+        public uint SelfId { get; set; }
+        public uint PluginId { get; set; }       // Audio plug-in ID (e.g. Wwise Vorbis = 0x00040001)
+        public byte StreamType { get; set; }     // 0=Embedded, 1=Streamed, 2=Prefetched
+        public uint SourceId { get; set; }       // WEM file ID (media source ID)
+        public uint InMemoryMediaSize { get; set; }
+        public byte SourceBits { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+    }
+
+    /// <summary>Type 3 — Event Action.</summary>
+    public class EventAction
+    {
+        public uint SelfId { get; set; }
+        public byte Scope { get; set; }
+        public byte ActionType { get; set; }
+        public uint TargetId { get; set; }
+        public byte ParameterCount { get; set; }
+        public List<byte> ParameterTypes { get; set; } = new List<byte>();
+        public List<float> ParameterValues { get; set; } = new List<float>();
+        // Keep legacy alias used elsewhere
+        public uint SoundObjectId { get => TargetId; set => TargetId = value; }
+        public uint SwitchGroupId { get; set; }
+        public byte Type { get => ActionType; set => ActionType = value; }
+    }
+
+    /// <summary>Type 4 — Event.</summary>
+    public class Event
+    {
+        public uint SelfId { get; set; }
+        public byte EventAmount { get; set; }
+        public List<uint> EventIds { get; set; } = new List<uint>();
+    }
+
+    public class PlaylistEntry
+    {
+        public uint PlayID { get; set; }
+        public uint Weight { get; set; }
+        public uint RsGroupID { get; set; }
+    }
+
+    /// <summary>Type 5 — Random / Sequence Container.</summary>
+    public class RandomContainer
+    {
+        public uint SelfId { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+        public ushort LoopCount { get; set; }
+        public ushort LoopModMin { get; set; }
+        public ushort LoopModMax { get; set; }
+        public float TransitionTime { get; set; }
+        public float TransitionTimeModMin { get; set; }
+        public float TransitionTimeModMax { get; set; }
+        public byte TransitionMode { get; set; }
+        public ushort AvoidRepeatCount { get; set; }
+        public byte RandomMode { get; set; }
+        public uint SoundIdAmount { get; set; }
+        public List<uint> SoundIds { get; set; } = new List<uint>();
+        public List<uint> ChildrenIds => SoundIds;
+        public ushort PlaylistLength { get; set; }
+        public List<PlaylistEntry> Playlist { get; set; } = new List<PlaylistEntry>();
+    }
+
+    public class SwitchGroup
+    {
+        public uint SwitchId { get; set; }
+        public List<uint> Items { get; set; } = new List<uint>();
+    }
+
+    /// <summary>Type 6 — Switch Container.</summary>
+    public class SwitchContainer
+    {
+        public uint SelfId { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+        public byte GroupType { get; set; }
+        public uint GroupId { get; set; }
+        public uint DefaultSwitchId { get; set; }
+        public bool IsContinuousValidation { get; set; }
+        public List<uint> Children { get; set; } = new List<uint>();
+        public List<SwitchGroup> SwitchGroups { get; set; } = new List<SwitchGroup>();
+    }
+
+    /// <summary>Type 7 — Actor-Mixer.</summary>
+    public class ActorMixer
+    {
+        public uint SelfId { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+        public List<uint> Children { get; set; } = new List<uint>();
+    }
+
+    /// <summary>Type 8 — Audio Bus.</summary>
+    public class AudioBus
+    {
+        public uint SelfId { get; set; }
+        public uint ParentBusId { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+    }
+
+    /// <summary>Type 9 — Blend Container.</summary>
+    public class BlendContainer
+    {
+        public uint SelfId { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+        public List<uint> Children { get; set; } = new List<uint>();
+    }
+
+    /// <summary>Type 10 — Music Segment.</summary>
+    public class MusicSegment
+    {
+        public uint SelfId { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+        public List<uint> MusicTrackIds { get; set; } = new List<uint>();
+    }
+
+    /// <summary>Type 11 — Music Track.</summary>
+    public class MusicTrack
+    {
+        public uint SelfId { get; set; }
+        public List<uint> FileIds { get; set; } = new List<uint>();
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+    }
+
+    /// <summary>Type 12 — Music Switch Container.</summary>
+    public class MusicSwitch
+    {
+        public uint SelfId { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+        public List<uint> Children { get; set; } = new List<uint>();
+    }
+
+    /// <summary>Type 13 — Music Playlist Container.</summary>
+    public class MusicPlaylist
+    {
+        public uint SelfId { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+        public List<uint> MusicTrackIds { get; set; } = new List<uint>();
+    }
+
+    /// <summary>Type 14 — Attenuation.</summary>
+    public class Attenuation
+    {
+        public uint SelfId { get; set; }
+        public byte EnableHeightSpread { get; set; }
+    }
+
+    /// <summary>Type 15 — Dialogue Event.</summary>
+    public class DialogueEvent
+    {
+        public uint SelfId { get; set; }
+        public uint DecisionTreeDepth { get; set; }
+    }
+
+    /// <summary>Type 16 — Motion Bus.</summary>
+    public class MotionBus
+    {
+        public uint SelfId { get; set; }
+        public uint ParentId { get; set; }
+    }
+
+    /// <summary>Type 17 — Motion FX.</summary>
+    public class MotionFx
+    {
+        public uint SelfId { get; set; }
+        public uint MotionFxPluginId { get; set; }
+    }
+
+    /// <summary>Type 18 — Effect (FX).</summary>
+    public class Effect
+    {
+        public uint SelfId { get; set; }
+        public uint PluginId { get; set; }
+        public byte IsShareSet { get; set; }
+    }
+
+    /// <summary>Type 19 — Auxiliary Bus.</summary>
+    public class AuxiliaryBus
+    {
+        public uint SelfId { get; set; }
+        public uint ParentBusId { get; set; }
+        public NodeBaseParams NodeBaseParams { get; set; } = new NodeBaseParams();
+    }
+}

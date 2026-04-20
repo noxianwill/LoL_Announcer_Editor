@@ -1,4 +1,4 @@
-﻿<Window x:Class="LoL_Announcer_Editor.MainWindow"
+<Window x:Class="LoL_Announcer_Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -18,7 +18,7 @@
             </MenuItem>
             <MenuItem Header="Export">
                 <MenuItem Header="Export BNK">
-                    <MenuItem Header="Json" Click="MenuItem_Click"/>
+                    <MenuItem Header="Json" Click="ExportToJson_Click"/>
                 </MenuItem>
                 <MenuItem Header="Export as Wwise Project Template" Click="ExportWwiseProject_Click"/>
             </MenuItem>
@@ -28,9 +28,9 @@
             <Button Content="select bin file" Click="OpenBinFile_Click" HorizontalAlignment="Left" Margin="7,20,0,0" VerticalAlignment="Top" Width="119"/>
             <Button Content="select audio file" Click="OpenWpkFile_Click" HorizontalAlignment="Left" Margin="7,46,0,0" VerticalAlignment="Top" Width="119"/>
             <Button Content="select events file" Click="OpenBnkFile_Click" HorizontalAlignment="Left" Margin="7,72,0,0" VerticalAlignment="Top" Width="119"/>
-            <TextBox Text="C:\Users\Administrator\Desktop\map11.bin" x:Name="BinFilePath" HorizontalAlignment="Left" Margin="142,20,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="600"/>
-            <TextBox Text="C:\Users\Administrator\Desktop\announcer_global_female1_vo_audio.wpk" x:Name="WpkFilePath" HorizontalAlignment="Left" Margin="142,46,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="600"/>
-            <TextBox Text="C:\Users\Administrator\Desktop\announcer_global_female1_vo_events.bnk" x:Name="BnkFilePath" HorizontalAlignment="Left" Margin="142,72,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="600"/>
+            <TextBox Text="C:\Users\walid\Desktop\map11.bin" x:Name="BinFilePath" HorizontalAlignment="Left" Margin="142,20,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="600"/>
+            <TextBox Text="C:\Users\walid\Desktop\announcer_global_female1_vo_audio.wpk" x:Name="WpkFilePath" HorizontalAlignment="Left" Margin="142,46,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="600"/>
+            <TextBox Text="C:\Users\walid\Desktop\announcer_global_female1_vo_events.bnk" x:Name="BnkFilePath" HorizontalAlignment="Left" Margin="142,72,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="600"/>
             <TreeView x:Name="TreeView" Margin="10,114,300,69" SelectedItemChanged="TreeView_SelectedItemChanged">
                 <TreeView.Resources>
                     <BooleanToVisibilityConverter x:Key="BoolToVis"/>
