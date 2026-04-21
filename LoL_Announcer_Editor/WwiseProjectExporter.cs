@@ -114,6 +114,25 @@ namespace LoL_Announcer_Editor
             var events = BuildEventsHierarchy(sections, eventNameLookup);
             ModifyEventsWorkUnit(eventsDoc, events);
             eventsDoc.Save(eventsWwuPath);
+
+            // 8. Build SoundBanks
+            WwiseExporterLogger.Log("Building SoundBanks Work Unit...");
+            string soundBanksWwuPath = Path.Combine(projectFolder, "SoundBanks", "Default Work Unit.wwu");
+            XDocument sbDoc;
+            if (File.Exists(soundBanksWwuPath))
+            {
+                sbDoc = XDocument.Load(soundBanksWwuPath);
+            }
+            else
+            {
+                WwiseExporterLogger.Log("SoundBanks/Default Work Unit.wwu not found. Creating it...");
+                Directory.CreateDirectory(Path.Combine(projectFolder, "SoundBanks"));
+                sbDoc = CreateDefaultSoundBanksWorkUnit();
+            }
+
+            string eventsWuId = eventsDoc.Descendants("WorkUnit").FirstOrDefault()?.Attribute("ID")?.Value ?? "{00000000-0000-0000-0000-000000000000}";
+            ModifySoundBanksWorkUnit(sbDoc, eventsWuId);
+            sbDoc.Save(soundBanksWwuPath);
         }
 
         private HashSet<uint> GetUsedWemIds(BNKSections sections)
@@ -708,6 +727,68 @@ namespace LoL_Announcer_Editor
             {
                 childrenList.Add(eventElement);
             }
+        }
+
+        private XDocument CreateDefaultSoundBanksWorkUnit()
+        {
+            return new XDocument(
+                new XDeclaration("1.0", "utf-8", null),
+                new XElement("WwiseDocument",
+                    new XAttribute("Type", "WorkUnit"),
+                    new XAttribute("ID", "{" + Guid.NewGuid().ToString().ToUpper() + "}"),
+                    new XAttribute("SchemaVersion", "110"),
+                    new XElement("SoundBanks",
+                        new XElement("WorkUnit",
+                            new XAttribute("Name", "Default Work Unit"),
+                            new XAttribute("ID", "{" + Guid.NewGuid().ToString().ToUpper() + "}"),
+                            new XAttribute("PersistMode", "Standalone")
+                        )
+                    )
+                )
+            );
+        }
+
+        private void ModifySoundBanksWorkUnit(XDocument doc, string eventsWorkUnitId)
+        {
+            var workUnit = doc.Descendants("WorkUnit")
+                .FirstOrDefault(wu => wu.Attribute("Name")?.Value == "Default Work Unit");
+
+            if (workUnit == null) return;
+
+            var childrenList = workUnit.Element("ChildrenList");
+            if (childrenList == null)
+            {
+                childrenList = new XElement("ChildrenList");
+                workUnit.Add(childrenList);
+            }
+
+            // Check if the soundbank already exists
+            string bankName = "announcer_global_female1_vo_events";
+            var existingBank = childrenList.Elements("SoundBank").FirstOrDefault(sb => sb.Attribute("Name")?.Value == bankName);
+            if (existingBank != null)
+            {
+                existingBank.Remove();
+            }
+
+            string bankGuid = GenerateGuid();
+            string bankShortId = GenerateShortId();
+
+            var soundBankElement = new XElement("SoundBank",
+                new XAttribute("Name", bankName),
+                new XAttribute("ID", bankGuid),
+                new XAttribute("ShortID", bankShortId),
+                new XElement("ObjectInclusionList",
+                    new XElement("ObjectRef",
+                        new XAttribute("Name", "Events"), // Included root events workunit
+                        new XAttribute("ID", eventsWorkUnitId),
+                        new XAttribute("WorkUnitID", eventsWorkUnitId),
+                        new XAttribute("Origin", "Manual"),
+                        new XAttribute("Filter", "7") // 7 = Events, Structures, Media. The user can uncheck Media in Wwise if needed, or 3 for just Events/Structures. We'll use 7 for default Wwise behavior.
+                    )
+                )
+            );
+
+            childrenList.Add(soundBankElement);
         }
 
         private string GenerateGuid()
