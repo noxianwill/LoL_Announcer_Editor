@@ -785,7 +785,9 @@ namespace LoL_Announcer_Editor
                         new XAttribute("Origin", "Manual"),
                         new XAttribute("Filter", "7") // 7 = Events, Structures, Media. The user can uncheck Media in Wwise if needed, or 3 for just Events/Structures. We'll use 7 for default Wwise behavior.
                     )
-                )
+                ),
+                new XElement("ObjectExclusionList"),
+                new XElement("GameSyncExclusionList")
             );
 
             childrenList.Add(soundBankElement);
