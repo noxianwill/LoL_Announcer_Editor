@@ -1,13 +1,10 @@
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 namespace LoL_Announcer_Editor
 {
-    /// <summary>
-    /// Reads individual HIRC objects from a BinaryReader into structured objects.
-    /// No raw byte arrays are stored; every field is parsed into named properties.
-    /// </summary>
     public static class BnkObjectReaders
     {
         // ── Type 2: Sound ─────────────────────────────────────────────────────
@@ -16,38 +13,45 @@ namespace LoL_Announcer_Editor
             var obj = new Sound();
             try
             {
-                obj.SelfId             = reader.ReadUInt32();
-                obj.PluginId           = reader.ReadUInt32();
-                obj.StreamType         = reader.ReadByte();
-                obj.SourceId           = reader.ReadUInt32();
-                obj.InMemoryMediaSize  = reader.ReadUInt32();
-                obj.SourceBits         = reader.ReadByte();
-                obj.NodeBaseParams     = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
+                obj.SelfId = reader.ReadUInt32();
+                
+                // 1. Source Data (CAkBankMgr::LoadSource)
+                uint pluginId = reader.ReadUInt32();
+                byte streamType = reader.ReadByte();
+                obj.SourceId = reader.ReadUInt32(); // The actual WEM ID
+                uint inMemorySize = reader.ReadUInt32();
+                byte sourceBits = reader.ReadByte();
+                
+                // 2. Node Base Params
+                obj.NodeBaseParams = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                WwiseExporterLogger.LogError($"    [Type 2] Sound {obj.SelfId} Parse Error: {ex.Message}");
+            }
             sounds.Add(obj);
             return true;
         }
 
-        // ── Type 3: Event Action ──────────────────────────────────────────────
-        public static bool ReadEventActionObject(BinaryReader reader, List<EventAction> eventActions, byte[] _unused)
+        // ── Type 3: Action ────────────────────────────────────────────────────
+        public static bool ReadEventActionObject(BinaryReader reader, List<EventAction> actions, byte[] _unused)
         {
             var obj = new EventAction();
             try
             {
-                obj.SelfId    = reader.ReadUInt32();
-                obj.Scope     = reader.ReadByte();
-                obj.ActionType = reader.ReadByte();
-                obj.TargetId  = reader.ReadUInt32();
-                // Additional parameter list (may be empty)
-                obj.ParameterCount = reader.ReadByte();
-                for (int i = 0; i < obj.ParameterCount; i++)
-                    obj.ParameterTypes.Add(reader.ReadByte());
-                for (int i = 0; i < obj.ParameterCount; i++)
-                    obj.ParameterValues.Add(reader.ReadSingle());
+                obj.SelfId   = reader.ReadUInt32();
+                obj.ActionType = reader.ReadUInt16(); // 2 bytes in BNK 62+
+                obj.TargetId = reader.ReadUInt32();
+                
+                // Rest of Action parameters vary by type, but we usually just need the target.
+                // The BnkExtractor MemoryStream will handle the remaining bytes.
+                WwiseExporterLogger.Log($"    [Type 3] Action {obj.SelfId}: Target {obj.TargetId}, Type {obj.ActionType}");
             }
-            catch { }
-            eventActions.Add(obj);
+            catch (Exception ex)
+            {
+                WwiseExporterLogger.LogError($"    [Type 3] Action {obj.SelfId} Parse Error: {ex.Message}");
+            }
+            actions.Add(obj);
             return true;
         }
 
@@ -57,51 +61,64 @@ namespace LoL_Announcer_Editor
             var obj = new Event();
             try
             {
-                obj.SelfId      = reader.ReadUInt32();
-                obj.EventAmount = reader.ReadByte();
-                for (int i = 0; i < obj.EventAmount; i++)
-                    obj.EventIds.Add(reader.ReadUInt32());
+                obj.SelfId = reader.ReadUInt32();
+                // In BNK 145, the action count is a single byte.
+                uint count = reader.ReadByte();
+                for (int i = 0; i < count; i++) 
+                {
+                    uint actionId = reader.ReadUInt32();
+                    obj.EventIds.Add(actionId);
+                }
+                WwiseExporterLogger.Log($"    [Type 4] Event {obj.SelfId}: {obj.EventIds.Count} actions found.");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                WwiseExporterLogger.LogError($"    [Type 4] Event {obj.SelfId} Parse Error: {ex.Message}");
+            }
             events.Add(obj);
             return true;
         }
 
-        // ── Type 5: Random / Sequence Container ───────────────────────────────
+        // ── Type 5: Random Container ──────────────────────────────────────────
         public static bool ReadRandomContainerObject(BinaryReader reader, List<RandomContainer> randomContainers, uint bnkVersion, byte[] _unused)
         {
             var obj = new RandomContainer();
             try
             {
-                obj.SelfId           = reader.ReadUInt32();
-                obj.NodeBaseParams   = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
-                obj.LoopCount           = reader.ReadUInt16();
-                obj.LoopModMin          = reader.ReadUInt16();
-                obj.LoopModMax          = reader.ReadUInt16();
-                obj.TransitionTime       = reader.ReadSingle();
-                obj.TransitionTimeModMin = reader.ReadSingle();
-                obj.TransitionTimeModMax = reader.ReadSingle();
-                obj.TransitionMode = reader.ReadByte();
-                obj.AvoidRepeatCount = reader.ReadUInt16();
-                obj.RandomMode = reader.ReadByte();
+                obj.SelfId = reader.ReadUInt32();
+                
+                // 1. Skip NodeBaseParams
+                BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
 
-                // BNK 145 (Wwise 2021) has an extra byte here before the child count
-                if (bnkVersion >= 140) reader.ReadByte(); 
-                obj.SoundIdAmount    = reader.ReadUInt32();
-                for (int i = 0; i < obj.SoundIdAmount; i++)
-                    obj.SoundIds.Add(reader.ReadUInt32());
-                obj.PlaylistLength   = reader.ReadUInt16();
-                for (int i = 0; i < obj.PlaylistLength; i++)
+                // 2. Read Random Container specific fields (BNK 145)
+                // In Wwise 2022.1 (145), this is a 24-byte block before children count.
+                reader.ReadUInt16(); // sLoopCount
+                reader.ReadUInt16(); // sLoopModMin
+                reader.ReadUInt16(); // sLoopModMax
+                reader.ReadSingle(); // fTransitionTime (float)
+                reader.ReadSingle(); // fTransitionTimeModMin (float)
+                reader.ReadSingle(); // fTransitionTimeModMax (float)
+                reader.ReadUInt16(); // wAvoidRepeatCount (MISSING BEFORE!)
+                reader.ReadByte();   // eTransitionMode
+                reader.ReadByte();   // eRandomMode
+                reader.ReadByte();   // eMode
+                reader.ReadByte();   // byBitVector (bIsUsingWeight, bResetIDOnRestart, etc.)
+
+                // 3. Read Children
+                uint count = reader.ReadUInt32();
+                obj.SoundIdAmount = count;
+                for (int i = 0; i < (int)count; i++)
                 {
-                    var entry = new PlaylistEntry {
-                        PlayID    = reader.ReadUInt32(),
-                        Weight    = reader.ReadUInt32()
-                    };
-                    if (bnkVersion > 0x70) entry.RsGroupID = reader.ReadUInt32();
-                    obj.Playlist.Add(entry);
+                    uint childId = reader.ReadUInt32();
+                    obj.SoundIds.Add(childId);
                 }
+
+                WwiseExporterLogger.Log($"    [Type 5] Container {obj.SelfId}: Found {obj.SoundIdAmount} children.");
             }
-            catch { }
+            catch (Exception ex) 
+            {
+                WwiseExporterLogger.LogError($"    ERROR in ReadRandomContainerObject {obj.SelfId}: {ex.Message}");
+            }
             randomContainers.Add(obj);
             return true;
         }
@@ -112,28 +129,31 @@ namespace LoL_Announcer_Editor
             var obj = new SwitchContainer();
             try
             {
-                obj.SelfId                 = reader.ReadUInt32();
-                obj.NodeBaseParams         = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
-                reader.BaseStream.Seek(1, SeekOrigin.Current); // loop flags byte
-                obj.GroupType              = reader.ReadByte();
-                obj.GroupId                = reader.ReadUInt32();
-                obj.DefaultSwitchId        = reader.ReadUInt32();
-                obj.IsContinuousValidation = reader.ReadByte() != 0;
-                if (bnkVersion >= 140) reader.ReadByte(); // Extra flags byte
-                uint childCount = reader.ReadUInt32();
-                for (int i = 0; i < childCount; i++)
-                    obj.Children.Add(reader.ReadUInt32());
-                uint groupCount = reader.ReadUInt32();
-                for (int i = 0; i < groupCount; i++)
+                obj.SelfId = reader.ReadUInt32();
+                
+                // 1. Skip NodeBaseParams
+                BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
+
+                // 2. Read Switch Container specific fields (BNK 145)
+                // In Wwise 2022.1 (145), this is a 10-byte block before children.
+                reader.ReadByte();   // eGroupType
+                reader.ReadUInt32(); // ulGroupID
+                reader.ReadUInt32(); // ulDefaultSwitchID
+                reader.ReadByte();   // bIsContinuousValidation
+
+                // 3. Read Children
+                uint count = reader.ReadUInt32();
+                for (int i = 0; i < (int)count; i++)
                 {
-                    var group = new SwitchGroup { SwitchId = reader.ReadUInt32() };
-                    uint itemCount = reader.ReadUInt32();
-                    for (int j = 0; j < itemCount; j++)
-                        group.Items.Add(reader.ReadUInt32());
-                    obj.SwitchGroups.Add(group);
+                    obj.Children.Add(reader.ReadUInt32());
                 }
+
+                WwiseExporterLogger.Log($"    [Type 6] SwitchContainer {obj.SelfId}: Found {obj.Children.Count} children.");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                WwiseExporterLogger.LogError($"    ERROR in ReadSwitchContainerObject {obj.SelfId}: {ex.Message}");
+            }
             switchContainers.Add(obj);
             return true;
         }
@@ -144,14 +164,23 @@ namespace LoL_Announcer_Editor
             var obj = new ActorMixer();
             try
             {
-                obj.SelfId       = reader.ReadUInt32();
-                obj.NodeBaseParams = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
-                if (bnkVersion >= 140) reader.ReadByte(); // Extra flags byte
-                uint childCount  = reader.ReadUInt32();
-                for (int i = 0; i < childCount; i++)
+                obj.SelfId = reader.ReadUInt32();
+                
+                // In BNK 145, Actor-Mixer (Type 7) follows NodeBaseParams with a children count.
+                BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
+
+                uint count = reader.ReadUInt32();
+                for (int i = 0; i < (int)count; i++)
+                {
                     obj.Children.Add(reader.ReadUInt32());
+                }
+
+                WwiseExporterLogger.Log($"    [Type 7] ActorMixer {obj.SelfId}: Found {obj.Children.Count} children.");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                WwiseExporterLogger.Log($"    ERROR in ReadActorMixerObject {obj.SelfId}: {ex.Message}");
+            }
             actorMixers.Add(obj);
             return true;
         }
@@ -218,135 +247,91 @@ namespace LoL_Announcer_Editor
             tracks.Add(obj);
             return true;
         }
+        // ── Type 1: Settings ──────────────────────────────────────────────────
+        public static bool ReadSettingsObject(BinaryReader reader, List<Settings> settings, byte[] _unused)
+        {
+            var obj = new Settings();
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
+            settings.Add(obj);
+            return true;
+        }
 
-        // ── Type 12: Music Switch Container ──────────────────────────────────
+        // ── Type 12: Music Switch ─────────────────────────────────────────────
         public static bool ReadMusicSwitchObject(BinaryReader reader, List<MusicSwitch> switches, uint bnkVersion, byte[] _unused)
         {
             var obj = new MusicSwitch();
-            try
-            {
-                obj.SelfId     = reader.ReadUInt32();
-                obj.NodeBaseParams = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
-                uint count     = reader.ReadUInt32();
-                for (int i = 0; i < count; i++) obj.Children.Add(reader.ReadUInt32());
-            }
-            catch { }
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
             switches.Add(obj);
             return true;
         }
 
-        // ── Type 13: Music Playlist Container ────────────────────────────────
-        public static void ReadMusicContainerObject(BinaryReader reader, List<MusicPlaylist> containers, uint bnkVersion, byte[] _unused)
+        // ── Type 13: Music Playlist ───────────────────────────────────────────
+        public static void ReadMusicContainerObject(BinaryReader reader, List<MusicPlaylist> playlists, uint bnkVersion, byte[] _unused)
         {
             var obj = new MusicPlaylist();
-            try
-            {
-                obj.SelfId     = reader.ReadUInt32();
-                obj.NodeBaseParams = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
-                uint count     = reader.ReadUInt32();
-                for (int i = 0; i < count; i++) obj.MusicTrackIds.Add(reader.ReadUInt32());
-            }
-            catch { }
-            containers.Add(obj);
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
+            playlists.Add(obj);
         }
 
-        // ── Type 14: Attenuation ─────────────────────────────────────────────
+        public static bool ReadMusicPlaylistObject(BinaryReader reader, List<MusicPlaylist> playlists, byte[] _unused)
+        {
+            var obj = new MusicPlaylist();
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
+            playlists.Add(obj);
+            return true;
+        }
+
+        // ── Type 14: Attenuation ──────────────────────────────────────────────
         public static bool ReadAttenuationObject(BinaryReader reader, List<Attenuation> attenuations, byte[] _unused)
         {
             var obj = new Attenuation();
-            try
-            {
-                obj.SelfId            = reader.ReadUInt32();
-                obj.EnableHeightSpread = reader.ReadByte();
-            }
-            catch { }
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
             attenuations.Add(obj);
             return true;
         }
 
-        // ── Type 15: Dialogue Event ──────────────────────────────────────────
-        public static bool ReadDialogueEventObject(BinaryReader reader, List<DialogueEvent> dialogueEvents, byte[] _unused)
+        // ── Type 15: Dialogue Event ───────────────────────────────────────────
+        public static bool ReadDialogueEventObject(BinaryReader reader, List<DialogueEvent> events, byte[] _unused)
         {
             var obj = new DialogueEvent();
-            try
-            {
-                obj.SelfId            = reader.ReadUInt32();
-                obj.DecisionTreeDepth = reader.ReadUInt32();
-            }
-            catch { }
-            dialogueEvents.Add(obj);
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
+            events.Add(obj);
             return true;
         }
 
-        // ── Type 16: Motion Bus ──────────────────────────────────────────────
-        public static bool ReadMotionBusObject(BinaryReader reader, List<MotionBus> motionBuses, byte[] _unused)
+        // ── Type 16: Motion Bus ───────────────────────────────────────────────
+        public static bool ReadMotionBusObject(BinaryReader reader, List<MotionBus> buses, byte[] _unused)
         {
             var obj = new MotionBus();
-            try
-            {
-                obj.SelfId   = reader.ReadUInt32();
-                obj.ParentId = reader.ReadUInt32();
-            }
-            catch { }
-            motionBuses.Add(obj);
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
+            buses.Add(obj);
             return true;
         }
 
-        // ── Type 17: Motion FX ───────────────────────────────────────────────
-        public static bool ReadMotionFxObject(BinaryReader reader, List<MotionFx> motionFxs, byte[] _unused)
+        // ── Type 17: Motion FX ────────────────────────────────────────────────
+        public static bool ReadMotionFxObject(BinaryReader reader, List<MotionFx> fxs, byte[] _unused)
         {
             var obj = new MotionFx();
-            try
-            {
-                obj.SelfId           = reader.ReadUInt32();
-                obj.MotionFxPluginId = reader.ReadUInt32();
-            }
-            catch { }
-            motionFxs.Add(obj);
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
+            fxs.Add(obj);
             return true;
         }
 
         // ── Type 18: Effect ───────────────────────────────────────────────────
-        public static void ReadEffectObject(BinaryReader reader, List<Effect> effects, byte[] _unused)
+        public static bool ReadEffectObject(BinaryReader reader, List<Effect> effects, byte[] _unused)
         {
             var obj = new Effect();
-            try
-            {
-                obj.SelfId     = reader.ReadUInt32();
-                obj.PluginId   = reader.ReadUInt32();
-                obj.IsShareSet = reader.ReadByte();
-            }
-            catch { }
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
             effects.Add(obj);
+            return true;
         }
 
         // ── Type 19: Auxiliary Bus ────────────────────────────────────────────
-        public static void ReadAuxiliaryBusObject(BinaryReader reader, List<AuxiliaryBus> buses, byte[] _unused)
+        public static bool ReadAuxiliaryBusObject(BinaryReader reader, List<AuxiliaryBus> buses, byte[] _unused)
         {
             var obj = new AuxiliaryBus();
-            try
-            {
-                obj.SelfId      = reader.ReadUInt32();
-                obj.ParentBusId = reader.ReadUInt32();
-                obj.NodeBaseParams = BnkBinaryHelpers.ReadNodeBaseParams(reader, 0);
-            }
-            catch { }
+            try { obj.SelfId = reader.ReadUInt32(); } catch { }
             buses.Add(obj);
-        }
-
-        // ── Type 1: Settings ─────────────────────────────────────────────────
-        public static bool ReadSettingsObject(BinaryReader reader, List<Settings> settings, byte[] _unused)
-        {
-            var obj = new Settings();
-            try
-            {
-                obj.SelfId      = reader.ReadUInt32();
-                obj.NumSettings = reader.ReadByte();
-                for (int i = 0; i < obj.NumSettings; i++) obj.SettingTypes.Add(reader.ReadByte());
-                for (int i = 0; i < obj.NumSettings; i++) obj.SettingValues.Add(reader.ReadSingle());
-            }
-            catch { }
-            settings.Add(obj);
             return true;
         }
     }

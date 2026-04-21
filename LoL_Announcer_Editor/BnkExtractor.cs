@@ -109,6 +109,7 @@ namespace LoL_Announcer_Editor
                         {
                             byte type = hircReader.ReadByte();
                             uint len = hircReader.ReadUInt32();
+                            WwiseExporterLogger.Log($"    HIRC Object: Type {type}, Len {len}");
                             byte[] objPayload = hircReader.ReadBytes((int)len);
                             byte[] fullObj = new byte[len + 5];
                             fullObj[0] = type;

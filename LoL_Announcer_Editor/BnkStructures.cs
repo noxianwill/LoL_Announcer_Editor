@@ -186,7 +186,7 @@ namespace LoL_Announcer_Editor
     {
         public uint SelfId { get; set; }
         public byte Scope { get; set; }
-        public byte ActionType { get; set; }
+        public ushort ActionType { get; set; }
         public uint TargetId { get; set; }
         public byte ParameterCount { get; set; }
         public List<byte> ParameterTypes { get; set; } = new List<byte>();
@@ -194,7 +194,7 @@ namespace LoL_Announcer_Editor
         // Keep legacy alias used elsewhere
         public uint SoundObjectId { get => TargetId; set => TargetId = value; }
         public uint SwitchGroupId { get; set; }
-        public byte Type { get => ActionType; set => ActionType = value; }
+        public ushort Type { get => ActionType; set => ActionType = value; }
     }
 
     /// <summary>Type 4 — Event.</summary>

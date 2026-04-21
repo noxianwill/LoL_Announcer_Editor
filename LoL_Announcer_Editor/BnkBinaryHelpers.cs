@@ -38,14 +38,21 @@ namespace LoL_Announcer_Editor
             p.OverrideParentMetadata = reader.ReadByte();
             p.NumMetadata            = reader.ReadByte();
             for (int i = 0; i < p.NumMetadata; i++)
-                p.Metadata.Add(new MetadataEntry { Id = reader.ReadUInt32(), Value = reader.ReadByte() });
+            {
+                uint metaId = reader.ReadUInt32();
+                uint metaSize = reader.ReadUInt32();
+                reader.ReadBytes((int)metaSize); // Skip metadata payload
+                p.Metadata.Add(new MetadataEntry { Id = metaId, Value = 0 }); 
+            }
 
             // Bus / parent
             p.OverrideAttachmentParams = reader.ReadByte();
             p.OutputBusId              = reader.ReadUInt32();
             p.DirectParentId           = reader.ReadUInt32();
-            p.OverrideParentPriority   = reader.ReadByte();
-            p.OffsetPriority           = reader.ReadByte(); // This is Priority in 145
+            
+            // Priority/Midi bits (1 byte in 145+)
+            p.OverrideParentPriority = reader.ReadByte(); 
+            // Note: Priority value itself is now usually in Props (ID 7)
 
             // Props (float)
             byte propCount = reader.ReadByte();
@@ -67,18 +74,16 @@ namespace LoL_Announcer_Editor
 
             // Positioning
             p.PositioningBits = reader.ReadByte();
-            if ((p.PositioningBits & 0x01) != 0)
+            if ((p.PositioningBits & 0x01) != 0) // Override Parent
             {
-                // Positioning Type byte
-                byte posType = reader.ReadByte();
-                
-                // If 3D (bit 0x02 of posType OR bit 0x02 of PositioningBits, depends on version)
-                // For LoL announcer (usually 2D), we just need to make sure we don't over-read.
-                if ((p.PositioningBits & 0x02) != 0)
+                // In BNK 145: bit 0x02 indicates 3D (Listener Relative Routing)
+                if ((p.PositioningBits & 0x02) != 0) 
                 {
-                    p.Has3dPositioning = reader.ReadByte();
-                    // Skip 3D-specific params if present
-                    reader.BaseStream.Seek(7, SeekOrigin.Current); 
+                    reader.ReadByte(); // uBits3d
+                }
+                else 
+                {
+                    reader.ReadByte(); // bIsPannerEnabled
                 }
             }
 
@@ -91,20 +96,27 @@ namespace LoL_Announcer_Editor
                 p.AuxBus2 = reader.ReadUInt32();
                 p.AuxBus3 = reader.ReadUInt32();
             }
-            else if ((p.AuxBits & 0x04) != 0) // Some versions use bit 0x04 for a single aux bus
+            else if ((p.AuxBits & 0x04) != 0) 
             {
                 p.AuxBus0 = reader.ReadUInt32();
             }
+            
+            // reflectionsAuxBus (4 bytes in 145+)
+            if (bnkVersion >= 135)
+                reader.ReadUInt32();
 
-            // Virtual voice / HDR / Adv settings
-            // This is a 4-byte field in BNK 145
+            // Adv settings (6-byte block in BNK 145)
             if (bnkVersion >= 140) 
             {
-                reader.BaseStream.Seek(4, SeekOrigin.Current);
+                reader.ReadByte();   // bits
+                reader.ReadByte();   // virtual queue
+                reader.ReadUInt16(); // max instances
+                reader.ReadByte();   // below threshold
+                reader.ReadByte();   // hdr bits
             }
             else if (bnkVersion > 0x87) 
             {
-                reader.BaseStream.Seek(1, SeekOrigin.Current);
+                reader.ReadByte();
             }
 
             // State properties
