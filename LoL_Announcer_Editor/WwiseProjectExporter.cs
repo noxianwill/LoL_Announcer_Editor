@@ -779,11 +779,11 @@ namespace LoL_Announcer_Editor
                 new XAttribute("ShortID", bankShortId),
                 new XElement("ObjectInclusionList",
                     new XElement("ObjectRef",
-                        new XAttribute("Name", "Events"), // Included root events workunit
+                        new XAttribute("Name", "Default Work Unit"),
                         new XAttribute("ID", eventsWorkUnitId),
                         new XAttribute("WorkUnitID", eventsWorkUnitId),
                         new XAttribute("Origin", "Manual"),
-                        new XAttribute("Filter", "7") // 7 = Events, Structures, Media. The user can uncheck Media in Wwise if needed, or 3 for just Events/Structures. We'll use 7 for default Wwise behavior.
+                        new XAttribute("Filter", "3") // 3 = Events and Structures only (Media is 4)
                     )
                 ),
                 new XElement("ObjectExclusionList"),
