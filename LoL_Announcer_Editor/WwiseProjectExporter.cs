@@ -131,7 +131,7 @@ namespace LoL_Announcer_Editor
             }
 
             string eventsWuId = eventsDoc.Descendants("WorkUnit").FirstOrDefault()?.Attribute("ID")?.Value ?? "{00000000-0000-0000-0000-000000000000}";
-            ModifySoundBanksWorkUnit(sbDoc, eventsWuId);
+            ModifySoundBanksWorkUnit(sbDoc, eventsWuId, events);
             sbDoc.Save(soundBanksWwuPath);
         }
 
@@ -748,7 +748,7 @@ namespace LoL_Announcer_Editor
             );
         }
 
-        private void ModifySoundBanksWorkUnit(XDocument doc, string eventsWorkUnitId)
+        private void ModifySoundBanksWorkUnit(XDocument doc, string eventsWorkUnitId, List<XElement> events)
         {
             var workUnit = doc.Descendants("WorkUnit")
                 .FirstOrDefault(wu => wu.Attribute("Name")?.Value == "Default Work Unit");
@@ -773,19 +773,23 @@ namespace LoL_Announcer_Editor
             string bankGuid = GenerateGuid();
             string bankShortId = GenerateShortId();
 
+            var inclusionList = new XElement("ObjectInclusionList");
+            foreach (var evt in events)
+            {
+                inclusionList.Add(new XElement("ObjectRef",
+                    new XAttribute("Name", evt.Attribute("Name")?.Value ?? "UnknownEvent"),
+                    new XAttribute("ID", evt.Attribute("ID")?.Value ?? ""),
+                    new XAttribute("WorkUnitID", eventsWorkUnitId),
+                    new XAttribute("Origin", "Manual"),
+                    new XAttribute("Filter", "3") // 3 = Events and Structures only (Media is 4)
+                ));
+            }
+
             var soundBankElement = new XElement("SoundBank",
                 new XAttribute("Name", bankName),
                 new XAttribute("ID", bankGuid),
                 new XAttribute("ShortID", bankShortId),
-                new XElement("ObjectInclusionList",
-                    new XElement("ObjectRef",
-                        new XAttribute("Name", "Default Work Unit"),
-                        new XAttribute("ID", eventsWorkUnitId),
-                        new XAttribute("WorkUnitID", eventsWorkUnitId),
-                        new XAttribute("Origin", "Manual"),
-                        new XAttribute("Filter", "3") // 3 = Events and Structures only (Media is 4)
-                    )
-                ),
+                inclusionList,
                 new XElement("ObjectExclusionList"),
                 new XElement("GameSyncExclusionList")
             );
