@@ -141,7 +141,7 @@ namespace LoL_Announcer_Editor
         {
             var referencedIds = new HashSet<uint>();
             
-            // Traverse all events to collect referenced sounds
+            // Traverse all events to collect referenced sound SourceIds
             foreach (var evt in sections.Events)
             {
                 foreach (var actionId in evt.EventIds)
@@ -154,19 +154,11 @@ namespace LoL_Announcer_Editor
                 }
             }
 
+            // Any Sound whose SourceId (WEM ID) wasn't visited is unreferenced
             var unreferenced = new List<uint>();
-            foreach (var media in sections.Media)
-            {
-                if (!referencedIds.Contains(media.Id))
-                {
-                    unreferenced.Add(media.Id);
-                }
-            }
-            
-            // Also add sounds in the Sound list that didn't appear in the hierarchy
             foreach (var sound in sections.Sounds)
             {
-                if (!referencedIds.Contains(sound.SourceId))
+                if (sound.SourceId != 0 && !referencedIds.Contains(sound.SourceId))
                 {
                     if (!unreferenced.Contains(sound.SourceId))
                         unreferenced.Add(sound.SourceId);
