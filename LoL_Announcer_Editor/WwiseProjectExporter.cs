@@ -341,20 +341,23 @@ namespace LoL_Announcer_Editor
                                     if (_containerIdToGuid.ContainsKey(eventAction.SoundObjectId))
                                         continue;
 
-                                    string containerGuid = GenerateGuid();
-                                    string containerShortId = GenerateShortId();
-                                    _containerIdToGuid[eventAction.SoundObjectId] = containerGuid;
+                                    string soundGuid;
+                                    XElement finalSoundElement;
 
-                                    var containerElement = CreateRandomSequenceContainerForSingleSound(
-                                        eventName,
-                                        containerGuid,
-                                        containerShortId,
-                                        sound,
-                                        soundMap,
-                                        sections,
-                                        projectFolder);
+                                    if (soundMap.TryGetValue(sound.SourceId, out var existingSoundEl))
+                                    {
+                                        finalSoundElement = RepairSoundElement(new XElement(existingSoundEl), sound.SourceId, projectFolder);
+                                        soundGuid = finalSoundElement.Attribute("ID")?.Value ?? GenerateGuid();
+                                    }
+                                    else
+                                    {
+                                        soundGuid = GenerateGuid();
+                                        string soundShortId = GenerateShortId();
+                                        finalSoundElement = CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, soundGuid, soundShortId);
+                                    }
 
-                                    containers.Add(containerElement);
+                                    _containerIdToGuid[eventAction.SoundObjectId] = soundGuid;
+                                    containers.Add(finalSoundElement);
                                 }
                             }
                         }
@@ -438,46 +441,15 @@ namespace LoL_Announcer_Editor
             return containerElement;
         }
 
-        private XElement CreateRandomSequenceContainerForSingleSound(
-            string name,
-            string guid,
-            string shortId,
-            Sound sound,
-            Dictionary<uint, XElement> soundMap,
-            BNKSections sections,
-            string projectFolder)
-        {
-            var childrenList = new XElement("ChildrenList");
 
-            if (soundMap.TryGetValue(sound.SourceId, out var soundElement))
-            {
-                var repairedSound = RepairSoundElement(new XElement(soundElement), sound.SourceId, projectFolder);
-                childrenList.Add(repairedSound);
-            }
-
-            var containerElement = new XElement("RandomSequenceContainer",
-                new XAttribute("Name", name),
-                new XAttribute("ID", guid),
-                new XAttribute("ShortID", shortId),
-                new XElement("PropertyList",
-                    new XElement("Property",
-                        new XAttribute("Name", "RandomOrSequence"),
-                        new XAttribute("Type", "int16"),
-                        new XAttribute("Value", "0"))),
-                new XElement("ReferenceList",
-                    CreateOutputBusReference()),
-                childrenList);
-
-            return containerElement;
-        }
 
         /// <summary>
         /// Create a Sound element programmatically
         /// </summary>
-        private XElement CreateSoundElement(uint wemId, uint soundId, string projectFolder)
+        private XElement CreateSoundElement(uint wemId, uint soundId, string projectFolder, string soundGuid = null, string soundShortId = null)
         {
-            string soundGuid = GenerateGuid();
-            string soundShortId = GenerateShortId();
+            soundGuid = soundGuid ?? GenerateGuid();
+            soundShortId = soundShortId ?? GenerateShortId();
             string audioSourceGuid = GenerateGuid();
             string wemName = wemId.ToString();
 
