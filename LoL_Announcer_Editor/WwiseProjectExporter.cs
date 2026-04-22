@@ -273,7 +273,7 @@ namespace LoL_Announcer_Editor
                             continue;
 
                         string containerGuid = GenerateGuid();
-                        string containerShortId = GenerateShortId();
+                        string containerShortId = randomContainer.SelfId.ToString();
                         _containerIdToGuid[randomContainer.SelfId] = containerGuid;
 
                         var containerElement = CreateRandomSequenceContainer(
@@ -296,7 +296,7 @@ namespace LoL_Announcer_Editor
                                 continue;
 
                             string containerGuid = GenerateGuid();
-                            string containerShortId = GenerateShortId();
+                            string containerShortId = switchContainer.SelfId.ToString();
                             _containerIdToGuid[switchContainer.SelfId] = containerGuid;
 
                             var containerElement = CreateSwitchContainer(
@@ -319,7 +319,7 @@ namespace LoL_Announcer_Editor
                                     continue;
 
                                 string containerGuid = GenerateGuid();
-                                string containerShortId = GenerateShortId();
+                                string containerShortId = actorMixer.SelfId.ToString();
                                 _containerIdToGuid[actorMixer.SelfId] = containerGuid;
 
                                 var containerElement = CreateActorMixer(
@@ -346,13 +346,13 @@ namespace LoL_Announcer_Editor
 
                                     if (soundMap.TryGetValue(sound.SourceId, out var existingSoundEl))
                                     {
-                                        finalSoundElement = RepairSoundElement(new XElement(existingSoundEl), sound.SourceId, projectFolder);
+                                        finalSoundElement = RepairSoundElement(new XElement(existingSoundEl), sound.SourceId, projectFolder, sound.SelfId.ToString());
                                         soundGuid = finalSoundElement.Attribute("ID")?.Value ?? GenerateGuid();
                                     }
                                     else
                                     {
                                         soundGuid = GenerateGuid();
-                                        string soundShortId = GenerateShortId();
+                                        string soundShortId = sound.SelfId.ToString();
                                         finalSoundElement = CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, soundGuid, soundShortId);
                                     }
 
@@ -484,9 +484,9 @@ namespace LoL_Announcer_Editor
                 if (sound != null)
                 {
                     if (soundMap.TryGetValue(sound.SourceId, out var soundEl))
-                        childrenList.Add(RepairSoundElement(new XElement(soundEl), sound.SourceId, projectFolder));
+                        childrenList.Add(RepairSoundElement(new XElement(soundEl), sound.SourceId, projectFolder, sound.SelfId.ToString()));
                     else
-                        childrenList.Add(CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder));
+                        childrenList.Add(CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, null, sound.SelfId.ToString()));
                 }
             }
 
@@ -507,9 +507,9 @@ namespace LoL_Announcer_Editor
                 if (sound != null)
                 {
                     if (soundMap.TryGetValue(sound.SourceId, out var soundEl))
-                        childrenList.Add(RepairSoundElement(new XElement(soundEl), sound.SourceId, projectFolder));
+                        childrenList.Add(RepairSoundElement(new XElement(soundEl), sound.SourceId, projectFolder, sound.SelfId.ToString()));
                     else
-                        childrenList.Add(CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder));
+                        childrenList.Add(CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, null, sound.SelfId.ToString()));
                 }
             }
 
@@ -521,8 +521,13 @@ namespace LoL_Announcer_Editor
                 childrenList);
         }
 
-        private XElement RepairSoundElement(XElement soundEl, uint wemId, string projectPath)
+        private XElement RepairSoundElement(XElement soundEl, uint wemId, string projectPath, string soundShortId = null)
         {
+            if (!string.IsNullOrEmpty(soundShortId))
+            {
+                soundEl.SetAttributeValue("ShortID", soundShortId);
+            }
+
             // Find AudioFile element
             var audioFileEl = soundEl.Descendants().FirstOrDefault(e => e.Name.LocalName == "AudioFile");
             if (audioFileEl == null) return soundEl;
@@ -651,7 +656,7 @@ namespace LoL_Announcer_Editor
                     : $"Event_{bnkEvent.SelfId}";
 
                 string eventGuid = GenerateGuid();
-                string eventShortId = GenerateShortId();
+                string eventShortId = bnkEvent.SelfId.ToString();
 
                 var actionsList = new XElement("ChildrenList");
 
@@ -662,7 +667,7 @@ namespace LoL_Announcer_Editor
 
                     if (_containerIdToGuid.TryGetValue(eventAction.SoundObjectId, out var containerGuid))
                     {
-                        var actionElement = CreatePlayAction(eventName, containerGuid);
+                        var actionElement = CreatePlayAction(eventName, containerGuid, eventAction.SelfId.ToString());
                         actionsList.Add(actionElement);
                     }
                 }
@@ -682,10 +687,9 @@ namespace LoL_Announcer_Editor
             return events;
         }
 
-        private XElement CreatePlayAction(string targetName, string targetGuid)
+        private XElement CreatePlayAction(string targetName, string targetGuid, string actionShortId)
         {
             string actionGuid = GenerateGuid();
-            string actionShortId = GenerateShortId();
 
             return new XElement("Action",
                 new XAttribute("Name", ""),
