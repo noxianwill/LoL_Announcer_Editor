@@ -392,14 +392,14 @@ namespace LoL_Announcer_Editor
                     if (soundMap.TryGetValue(sound.SourceId, out var soundElement))
                     {
                         WwiseExporterLogger.Log($"  + Adding Sound {sound.SourceId} (SelfId: {childId})");
-                        var repairedSound = RepairSoundElement(new XElement(soundElement), sound.SourceId, projectFolder);
+                        var repairedSound = RepairSoundElement(new XElement(soundElement), sound.SourceId, projectFolder, sound.SelfId.ToString());
                         childrenList.Add(repairedSound);
                         continue;
                     }
                     else
                     {
                         WwiseExporterLogger.Log($"  * Sound {sound.SourceId} (SelfId: {childId}) NOT found in project! Creating it...");
-                        var newSound = CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder);
+                        var newSound = CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, null, sound.SelfId.ToString());
                         childrenList.Add(newSound);
                         continue;
                     }
@@ -415,11 +415,20 @@ namespace LoL_Announcer_Editor
                     foreach (var nestedSoundId in nestedSoundIds)
                     {
                         var nestedSound = sections.Sounds.FirstOrDefault(s => s.SelfId == nestedSoundId);
-                        if (nestedSound != null && soundMap.TryGetValue(nestedSound.SourceId, out var nestedSoundElement))
+                        if (nestedSound != null)
                         {
-                            WwiseExporterLogger.Log($"  + Adding Nested Sound {nestedSound.SourceId} (SelfId: {nestedSoundId})");
-                            var repairedSound = RepairSoundElement(new XElement(nestedSoundElement), nestedSound.SourceId, projectFolder);
-                            childrenList.Add(repairedSound);
+                            if (soundMap.TryGetValue(nestedSound.SourceId, out var nestedSoundElement))
+                            {
+                                WwiseExporterLogger.Log($"  + Adding Nested Sound {nestedSound.SourceId} (SelfId: {nestedSoundId})");
+                                var repairedSound = RepairSoundElement(new XElement(nestedSoundElement), nestedSound.SourceId, projectFolder, nestedSound.SelfId.ToString());
+                                childrenList.Add(repairedSound);
+                            }
+                            else
+                            {
+                                WwiseExporterLogger.Log($"  * Nested Sound {nestedSound.SourceId} (SelfId: {nestedSoundId}) NOT found! Creating it...");
+                                var newSound = CreateSoundElement(nestedSound.SourceId, nestedSound.SelfId, projectFolder, null, nestedSound.SelfId.ToString());
+                                childrenList.Add(newSound);
+                            }
                         }
                     }
                 }
