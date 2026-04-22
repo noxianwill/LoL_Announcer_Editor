@@ -2894,7 +2894,7 @@ namespace LoL_Announcer_Editor
             {
                 try
                 {
-                    BnkExporter.ExportToJson(_currentBnkSections, sfd.FileName);
+                    BnkExporter.ExportToJson(_currentBnkSections, _eventNameLookup, sfd.FileName);
                     System.Windows.MessageBox.Show("Export successful!", "Success", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
                 }
                 catch (Exception ex)
