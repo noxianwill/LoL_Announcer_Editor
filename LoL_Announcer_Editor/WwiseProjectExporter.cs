@@ -576,6 +576,29 @@ namespace LoL_Announcer_Editor
                 if (langEl != null) langEl.Value = "English(US)";
             }
 
+            // Force IsStreamingEnabled to True so Wwise doesn't require media to be embedded in a SoundBank
+            var propertyList = soundEl.Elements().FirstOrDefault(e => e.Name.LocalName == "PropertyList");
+            if (propertyList == null)
+            {
+                propertyList = new XElement("PropertyList");
+                // Add after Name/ID attributes, usually at start of elements
+                soundEl.AddFirst(propertyList);
+            }
+
+            var streamingProp = propertyList.Elements().FirstOrDefault(p => p.Name.LocalName == "Property" && p.Attribute("Name")?.Value == "IsStreamingEnabled");
+            if (streamingProp == null)
+            {
+                propertyList.Add(new XElement("Property",
+                    new XAttribute("Name", "IsStreamingEnabled"),
+                    new XAttribute("Type", "bool"),
+                    new XAttribute("Value", "True")
+                ));
+            }
+            else
+            {
+                streamingProp.SetAttributeValue("Value", "True");
+            }
+
             return soundEl;
         }
 
