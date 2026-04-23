@@ -43,8 +43,26 @@ namespace LoL_Announcer_Editor
                 obj.ActionType = reader.ReadUInt16(); // 2 bytes in BNK 62+
                 obj.TargetId = reader.ReadUInt32();
                 
-                // Rest of Action parameters vary by type, but we usually just need the target.
-                // The BnkExtractor MemoryStream will handle the remaining bytes.
+                // Read idExt_4 (1 byte)
+                reader.ReadByte(); 
+
+                // Read AkPropBundle (float)
+                byte cProps = reader.ReadByte();
+                for (int i = 0; i < cProps; i++) reader.ReadByte(); // IDs
+                for (int i = 0; i < cProps; i++) reader.ReadSingle(); // Values
+
+                // Read AkPropBundle (int)
+                cProps = reader.ReadByte();
+                for (int i = 0; i < cProps; i++) reader.ReadByte(); // IDs
+                for (int i = 0; i < cProps; i++) reader.ReadInt32(); // Values
+
+                // If it's a Play action (0x0403), read PlayActionParams
+                if (obj.ActionType == 0x0403)
+                {
+                    obj.FadeCurve = reader.ReadByte(); // byBitVector (bit 0-2 is eFadeCurve)
+                    obj.BankId = reader.ReadUInt32();
+                }
+
                 WwiseExporterLogger.Log($"    [Type 3] Action {obj.SelfId}: Target {obj.TargetId}, Type {obj.ActionType}");
             }
             catch (Exception ex)
@@ -87,22 +105,22 @@ namespace LoL_Announcer_Editor
             {
                 obj.SelfId = reader.ReadUInt32();
                 
-                // 1. Skip NodeBaseParams
-                BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
+                // 1. Read NodeBaseParams
+                obj.NodeBaseParams = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
 
                 // 2. Read Random Container specific fields (BNK 145)
                 // In Wwise 2022.1 (145), this is a 24-byte block before children count.
-                reader.ReadUInt16(); // sLoopCount
-                reader.ReadUInt16(); // sLoopModMin
-                reader.ReadUInt16(); // sLoopModMax
-                reader.ReadSingle(); // fTransitionTime (float)
-                reader.ReadSingle(); // fTransitionTimeModMin (float)
-                reader.ReadSingle(); // fTransitionTimeModMax (float)
-                reader.ReadUInt16(); // wAvoidRepeatCount (MISSING BEFORE!)
-                reader.ReadByte();   // eTransitionMode
-                reader.ReadByte();   // eRandomMode
-                reader.ReadByte();   // eMode
-                reader.ReadByte();   // byBitVector (bIsUsingWeight, bResetIDOnRestart, etc.)
+                obj.LoopCount = reader.ReadUInt16();
+                obj.LoopModMin = reader.ReadUInt16();
+                obj.LoopModMax = reader.ReadUInt16();
+                obj.TransitionTime = reader.ReadSingle();
+                obj.TransitionTimeModMin = reader.ReadSingle();
+                obj.TransitionTimeModMax = reader.ReadSingle();
+                obj.AvoidRepeatCount = reader.ReadUInt16();
+                obj.TransitionMode = reader.ReadByte();
+                obj.RandomMode = reader.ReadByte();
+                obj.Mode = reader.ReadByte();
+                obj.byBitVector = reader.ReadByte();
 
                 // 3. Read Children
                 uint count = reader.ReadUInt32();
@@ -111,6 +129,16 @@ namespace LoL_Announcer_Editor
                 {
                     uint childId = reader.ReadUInt32();
                     obj.SoundIds.Add(childId);
+                }
+
+                // 4. Read Playlist (AkPlaylistItem)
+                uint playlistCount = reader.ReadUInt16();
+                for (int i = 0; i < (int)playlistCount; i++)
+                {
+                    obj.Playlist.Add(new PlaylistItem {
+                        Id = reader.ReadUInt32(),
+                        Weight = reader.ReadInt32()
+                    });
                 }
 
                 WwiseExporterLogger.Log($"    [Type 5] Container {obj.SelfId}: Found {obj.SoundIdAmount} children.");
@@ -131,8 +159,8 @@ namespace LoL_Announcer_Editor
             {
                 obj.SelfId = reader.ReadUInt32();
                 
-                // 1. Skip NodeBaseParams
-                BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
+                // 1. Read NodeBaseParams
+                obj.NodeBaseParams = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
 
                 // 2. Read Switch Container specific fields (BNK 145)
                 // In Wwise 2022.1 (145), this is a 10-byte block before children.
@@ -167,7 +195,7 @@ namespace LoL_Announcer_Editor
                 obj.SelfId = reader.ReadUInt32();
                 
                 // In BNK 145, Actor-Mixer (Type 7) follows NodeBaseParams with a children count.
-                BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
+                obj.NodeBaseParams = BnkBinaryHelpers.ReadNodeBaseParams(reader, bnkVersion);
 
                 uint count = reader.ReadUInt32();
                 for (int i = 0; i < (int)count; i++)

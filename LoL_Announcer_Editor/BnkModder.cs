@@ -47,7 +47,7 @@ namespace LoL_Announcer_Editor
                     if (!container.SoundIds.Contains(newSoundId))
                     {
                         container.SoundIds.Add(newSoundId);
-                        container.Playlist.Add(new PlaylistEntry { PlayID = newSoundId, Weight = 50, RsGroupID = 0 });
+                        container.Playlist.Add(new PlaylistItem { Id = newSoundId, Weight = 50 });
                         var containerRecord = _bnk.AllObjectsInOrder.FirstOrDefault(o => o.ObjectId == container.SelfId);
                         if (containerRecord != null) containerRecord.IsChanged = true;
                     }

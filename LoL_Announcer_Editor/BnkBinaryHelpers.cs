@@ -41,8 +41,10 @@ namespace LoL_Announcer_Editor
             {
                 uint metaId = reader.ReadUInt32();
                 uint metaSize = reader.ReadUInt32();
-                reader.ReadBytes((int)metaSize); // Skip metadata payload
-                p.Metadata.Add(new MetadataEntry { Id = metaId, Value = 0 }); 
+                p.Metadata.Add(new MetadataEntry { 
+                    Id = metaId, 
+                    Payload = reader.ReadBytes((int)metaSize) 
+                }); 
             }
 
             // Bus / parent
@@ -79,11 +81,11 @@ namespace LoL_Announcer_Editor
                 // In BNK 145: bit 0x02 indicates 3D (Listener Relative Routing)
                 if ((p.PositioningBits & 0x02) != 0) 
                 {
-                    reader.ReadByte(); // uBits3d
+                    p.uBits3d = reader.ReadByte(); 
                 }
                 else 
                 {
-                    reader.ReadByte(); // bIsPannerEnabled
+                    p.bIsPannerEnabled = reader.ReadByte(); 
                 }
             }
 
@@ -101,22 +103,22 @@ namespace LoL_Announcer_Editor
                 p.AuxBus0 = reader.ReadUInt32();
             }
             
-            // reflectionsAuxBus (4 bytes in 145+)
+            // reflectionsAuxBus (4 bytes in 135+)
             if (bnkVersion >= 135)
-                reader.ReadUInt32();
+                p.ReflectionsAuxBus = reader.ReadUInt32();
 
-            // Adv settings (6-byte block in BNK 145)
+            // Adv settings (6-byte block in BNK 140+)
             if (bnkVersion >= 140) 
             {
-                reader.ReadByte();   // bits
-                reader.ReadByte();   // virtual queue
-                reader.ReadUInt16(); // max instances
-                reader.ReadByte();   // below threshold
-                reader.ReadByte();   // hdr bits
+                p.AdvBits = reader.ReadByte();
+                p.VirtualQueueBehavior = reader.ReadByte();
+                p.MaxNumInstance = reader.ReadUInt16();
+                p.BelowThresholdBehavior = reader.ReadByte();
+                p.HdrBits = reader.ReadByte();
             }
             else if (bnkVersion > 0x87) 
             {
-                reader.ReadByte();
+                p.AdvBits = reader.ReadByte();
             }
 
             // State properties
@@ -186,7 +188,12 @@ namespace LoL_Announcer_Editor
             // Metadata
             writer.Write(p.OverrideParentMetadata);
             writer.Write((byte)p.Metadata.Count);
-            foreach (var m in p.Metadata) { writer.Write(m.Id); writer.Write(m.Value); }
+            foreach (var m in p.Metadata) 
+            { 
+                writer.Write(m.Id); 
+                writer.Write((uint)m.Payload.Length);
+                writer.Write(m.Payload); 
+            }
 
             // Bus / parent
             writer.Write(p.OverrideAttachmentParams);
@@ -213,10 +220,11 @@ namespace LoL_Announcer_Editor
 
             // Positioning
             writer.Write(p.PositioningBits);
-            if ((p.PositioningBits & 0x01) != 0 && bnkVersion > 0x59)
+            if ((p.PositioningBits & 0x01) != 0)
             {
                 bool has3d = (p.PositioningBits & 0x02) != 0;
-                if (has3d) writer.Write(p.Has3dPositioning);
+                if (has3d) writer.Write(p.uBits3d);
+                else writer.Write(p.bIsPannerEnabled);
             }
 
             // Aux
@@ -230,7 +238,22 @@ namespace LoL_Announcer_Editor
             }
 
             // Virtual voice / HDR
-            if (bnkVersion > 0x87) writer.Write((uint)0);
+            if (bnkVersion >= 135)
+                writer.Write(p.ReflectionsAuxBus);
+
+            // Virtual voice / HDR / Adv Settings
+            if (bnkVersion >= 140)
+            {
+                writer.Write(p.AdvBits);
+                writer.Write(p.VirtualQueueBehavior);
+                writer.Write(p.MaxNumInstance);
+                writer.Write(p.BelowThresholdBehavior);
+                writer.Write(p.HdrBits);
+            }
+            else if (bnkVersion > 0x87) 
+            {
+                writer.Write(p.AdvBits);
+            }
 
             // State props
             writer.Write((byte)p.StateProps.Count);

@@ -123,9 +123,8 @@ namespace LoL_Announcer_Editor
                             inner.Write((ushort)rc.Playlist.Count);
                             foreach (var e in rc.Playlist)
                             {
-                                inner.Write(e.PlayID);
+                                inner.Write(e.Id);
                                 inner.Write(e.Weight);
-                                if (bnkVersion > 0x70) inner.Write(e.RsGroupID);
                             }
                         });
                         break;

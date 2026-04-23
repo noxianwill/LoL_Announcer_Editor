@@ -2375,7 +2375,7 @@ namespace LoL_Announcer_Editor
                 {
                     var originalSoundCount = randomContainer.SoundIds.Count;
                     randomContainer.SoundIds.RemoveAll(id => deletedSoundIds.Contains(id));
-                    randomContainer.Playlist.RemoveAll(entry => deletedSoundIds.Contains(entry.PlayID));
+                    randomContainer.Playlist.RemoveAll(entry => deletedSoundIds.Contains(entry.Id));
 
                     if (randomContainer.SoundIds.Count != originalSoundCount)
                     {
@@ -2787,7 +2787,7 @@ namespace LoL_Announcer_Editor
                     5 when parsedObject is RandomContainer rc => new {
                         rc.SelfId, rc.NodeBaseParams, rc.LoopCount, rc.TransitionTime,
                         SoundIds = rc.SoundIds?.ToList(),
-                        Playlist = rc.Playlist?.Select(p => new { p.PlayID, p.Weight, p.RsGroupID }).ToList()
+                        Playlist = rc.Playlist?.Select(p => new { p.Id, p.Weight }).ToList()
                     },
                     6 when parsedObject is SwitchContainer sc => new {
                         sc.SelfId, sc.NodeBaseParams, sc.GroupType, sc.GroupId, sc.DefaultSwitchId,
@@ -2886,8 +2886,8 @@ namespace LoL_Announcer_Editor
             {
                 try
                 {
-                    BnkExporter.ExportToJson(_currentBnkSections, _eventNameLookup, sfd.FileName);
-                    System.Windows.MessageBox.Show("Export successful!", "Success", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                    BnkExporter.ExportToJson(_fullFidelityBnk, sfd.FileName);
+                    System.Windows.MessageBox.Show("Full BNK dump to JSON successful!", "Success", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {

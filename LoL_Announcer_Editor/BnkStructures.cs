@@ -80,7 +80,7 @@ namespace LoL_Announcer_Editor
     public class MetadataEntry
     {
         public uint Id { get; set; }
-        public byte Value { get; set; }
+        public byte[] Payload { get; set; }
     }
 
     public class StateInstance
@@ -141,13 +141,22 @@ namespace LoL_Announcer_Editor
         public List<PropValueInt> PropsInt { get; set; } = new List<PropValueInt>();
 
         public byte PositioningBits { get; set; }
-        public byte Has3dPositioning { get; set; } // Only present when relevant bits are set
+        public byte uBits3d { get; set; }
+        public byte bIsPannerEnabled { get; set; }
 
         public byte AuxBits { get; set; }
         public uint AuxBus0 { get; set; }
         public uint AuxBus1 { get; set; }
         public uint AuxBus2 { get; set; }
         public uint AuxBus3 { get; set; }
+        public uint ReflectionsAuxBus { get; set; }
+
+        // Advanced Settings (BNK 140+)
+        public byte AdvBits { get; set; }
+        public byte VirtualQueueBehavior { get; set; }
+        public ushort MaxNumInstance { get; set; }
+        public byte BelowThresholdBehavior { get; set; }
+        public byte HdrBits { get; set; }
 
         // State properties
         public List<byte[]> StateProps { get; set; } = new List<byte[]>(); // 3 bytes each
@@ -185,16 +194,16 @@ namespace LoL_Announcer_Editor
     public class EventAction
     {
         public uint SelfId { get; set; }
-        public byte Scope { get; set; }
         public ushort ActionType { get; set; }
         public uint TargetId { get; set; }
-        public byte ParameterCount { get; set; }
+        public uint SoundObjectId => TargetId;
+        public byte FadeCurve { get; set; }
+        public uint BankId { get; set; }
+        // Compatibility fields for JSON export/debug view
+        public byte Scope { get; set; }
+        public uint SwitchGroupId { get; set; }
         public List<byte> ParameterTypes { get; set; } = new List<byte>();
         public List<float> ParameterValues { get; set; } = new List<float>();
-        // Keep legacy alias used elsewhere
-        public uint SoundObjectId { get => TargetId; set => TargetId = value; }
-        public uint SwitchGroupId { get; set; }
-        public ushort Type { get => ActionType; set => ActionType = value; }
     }
 
     /// <summary>Type 4 — Event.</summary>
@@ -205,11 +214,10 @@ namespace LoL_Announcer_Editor
         public List<uint> EventIds { get; set; } = new List<uint>();
     }
 
-    public class PlaylistEntry
+    public class PlaylistItem
     {
-        public uint PlayID { get; set; }
-        public uint Weight { get; set; }
-        public uint RsGroupID { get; set; }
+        public uint Id { get; set; }
+        public int Weight { get; set; }
     }
 
     /// <summary>Type 5 — Random / Sequence Container.</summary>
@@ -226,11 +234,13 @@ namespace LoL_Announcer_Editor
         public byte TransitionMode { get; set; }
         public ushort AvoidRepeatCount { get; set; }
         public byte RandomMode { get; set; }
+        public byte Mode { get; set; }
+        public byte byBitVector { get; set; }
         public uint SoundIdAmount { get; set; }
         public List<uint> SoundIds { get; set; } = new List<uint>();
         public List<uint> ChildrenIds => SoundIds;
         public ushort PlaylistLength { get; set; }
-        public List<PlaylistEntry> Playlist { get; set; } = new List<PlaylistEntry>();
+        public List<PlaylistItem> Playlist { get; set; } = new List<PlaylistItem>();
     }
 
     public class SwitchGroup
