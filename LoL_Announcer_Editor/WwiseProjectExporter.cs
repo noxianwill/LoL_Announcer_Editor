@@ -379,13 +379,13 @@ namespace LoL_Announcer_Editor
                 // We use the ID as a suffix to GUARANTEE uniqueness and stop all "NameConflict" errors.
                 if (sections.ActorMixers.Any(a => a.SelfId == id))
                 {
-                    // Root Mixer gets the full event context, nested ones are just "Mixer_ID"
-                    _objectNameMap[id] = isRoot ? $"Root_{containerName}_{id}" : $"Mixer_{id}";
+                    // Mixers are generic and only use their unique ID
+                    _objectNameMap[id] = $"Mixer_{id}";
                 }
                 else if (sections.RandomContainers.Any(r => r.SelfId == id) || 
                          sections.SwitchContainers.Any(s => s.SelfId == id))
                 {
-                    // Containers are named after the event + ID
+                    // Only Containers carry the event name context
                     _objectNameMap[id] = $"{containerName}_{id}";
                 }
                 // Sounds: intentionally not renamed — they keep their numeric IDs
