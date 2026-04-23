@@ -14,6 +14,7 @@ namespace LoL_Announcer_Editor
     public class WwiseProjectExporter
     {
         private Dictionary<uint, string> _containerIdToGuid = new();
+        private Dictionary<uint, string> _objectNameMap = new();  // ID -> human-readable name
         private string _actorMixerWorkUnitId = "";
         private string _masterBusId = "";
         private string _masterBusWorkUnitId = "";
@@ -292,6 +293,9 @@ namespace LoL_Announcer_Editor
             var containers = new List<XElement>();
             _containerIdToGuid.Clear();
 
+            // Pre-build a full ID->name map so every object gets a meaningful name
+            BuildObjectNameMap(sections, eventNameLookup);
+
             foreach (var bnkEvent in sections.Events)
             {
                 foreach (var eventActionId in bnkEvent.EventIds)
@@ -300,18 +304,15 @@ namespace LoL_Announcer_Editor
                     if (eventAction == null) continue;
 
                     uint targetId = eventAction.SoundObjectId;
-                    
-                    // Find the ultimate root parent for this target
                     uint rootId = FindRootParent(targetId, sections);
-
-                    string eventName = eventNameLookup.TryGetValue(bnkEvent.SelfId, out var name) ? name : $"Event_{bnkEvent.SelfId}";
-                    string suggestedName = eventName.Replace("Play_", "Cnt_");
 
                     // If this root has already been built (by another event), skip it at the top level
                     if (_containerIdToGuid.ContainsKey(rootId)) continue;
 
-                    // Build the tree starting from the root
-                    var element = BuildHierarchyRecursive(rootId, sections, soundMap, projectFolder, suggestedName);
+                    // Name comes from the pre-built map
+                    string rootName = _objectNameMap.TryGetValue(rootId, out var n) ? n : $"Cnt_{rootId}";
+
+                    var element = BuildHierarchyRecursive(rootId, sections, soundMap, projectFolder, rootName);
                     if (element != null)
                     {
                         containers.Add(element);
@@ -320,6 +321,122 @@ namespace LoL_Announcer_Editor
             }
 
             return containers;
+        }
+
+        /// <summary>
+        /// Walks every event->action->target chain and propagates the event name down
+        /// to every reachable object (containers, child containers, sounds).
+        /// Child containers that have their own event name keep that name;
+        /// objects shared by multiple events keep the first name assigned.
+        /// <summary>
+        /// Walks every event->action->target chain and assigns human-readable names.
+        /// Mixer: common prefix e.g. "Announcer_Female1"
+        /// Container: event-specific suffix e.g. "AceBlue"
+        /// Sounds: kept with their numeric source ID (no change)
+        /// </summary>
+        private void BuildObjectNameMap(BNKSections sections, Dictionary<uint, string> eventNameLookup)
+        {
+            _objectNameMap.Clear();
+
+            foreach (var bnkEvent in sections.Events)
+            {
+                string eventName = eventNameLookup.TryGetValue(bnkEvent.SelfId, out var n) ? n : $"Event_{bnkEvent.SelfId}";
+
+                // Strip common game prefixes: "Play_vo_", "Play_"
+                string stripped = eventName
+                    .Replace("Play_vo_", "")
+                    .Replace("Play_", "");
+
+                // Split into parts: ["Announcer", "Female1", "AceBlue"]
+                var parts = stripped.Split('_');
+
+                // Container name = last segment (e.g. "AceBlue")
+                string containerName = parts[parts.Length - 1];
+
+                // Mixer name = everything except the last segment (e.g. "Announcer_Female1")
+                string mixerName = parts.Length > 1
+                    ? string.Join("_", parts, 0, parts.Length - 1)
+                    : stripped;
+
+                foreach (var actionId in bnkEvent.EventIds)
+                {
+                    var action = sections.EventActions.FirstOrDefault(a => a.SelfId == actionId);
+                    if (action == null) continue;
+
+                    uint rootId = FindRootParent(action.SoundObjectId, sections);
+                    PropagateNameDown(rootId, containerName, mixerName, sections, new HashSet<uint>(), isRoot: true);
+                }
+            }
+        }
+
+        private void PropagateNameDown(uint id, string containerName, string mixerName, BNKSections sections, HashSet<uint> visited, bool isRoot = false)
+        {
+            if (!visited.Add(id)) return;
+
+            // Only assign if not already named (first event wins)
+            if (!_objectNameMap.ContainsKey(id))
+            {
+                if (sections.ActorMixers.Any(a => a.SelfId == id))
+                    _objectNameMap[id] = mixerName;
+                else if (sections.RandomContainers.Any(r => r.SelfId == id))
+                    _objectNameMap[id] = containerName;
+                else if (sections.SwitchContainers.Any(s => s.SelfId == id))
+                    _objectNameMap[id] = containerName;
+                // Sounds: intentionally not renamed — they keep their numeric IDs
+            }
+
+            // Recurse into children
+            var rc = sections.RandomContainers.FirstOrDefault(r => r.SelfId == id);
+            if (rc != null)
+            {
+                var childIds = rc.ChildrenIds.Count > 0 ? rc.ChildrenIds : rc.SoundIds;
+                // Only add index suffix if multiple non-sound children exist
+                var containerChildren = childIds.Where(c => !sections.Sounds.Any(s => s.SelfId == c)).ToList();
+                int idx = 0;
+                foreach (var childId in childIds)
+                {
+                    bool isSound = sections.Sounds.Any(s => s.SelfId == childId);
+                    if (isSound) continue; // sounds keep their own names
+                    string childName = containerChildren.Count > 1
+                        ? $"{containerName}_{idx++}"
+                        : containerName;
+                    PropagateNameDown(childId, childName, mixerName, sections, visited);
+                }
+                return;
+            }
+
+            var sc = sections.SwitchContainers.FirstOrDefault(s => s.SelfId == id);
+            if (sc != null)
+            {
+                var containerChildren = sc.Children.Where(c => !sections.Sounds.Any(s => s.SelfId == c)).ToList();
+                int idx = 0;
+                foreach (var childId in sc.Children)
+                {
+                    bool isSound = sections.Sounds.Any(s => s.SelfId == childId);
+                    if (isSound) continue;
+                    string childName = containerChildren.Count > 1
+                        ? $"{containerName}_{idx++}"
+                        : containerName;
+                    PropagateNameDown(childId, childName, mixerName, sections, visited);
+                }
+                return;
+            }
+
+            var am = sections.ActorMixers.FirstOrDefault(a => a.SelfId == id);
+            if (am != null)
+            {
+                var containerChildren = am.Children.Where(c => !sections.Sounds.Any(s => s.SelfId == c)).ToList();
+                int idx = 0;
+                foreach (var childId in am.Children)
+                {
+                    bool isSound = sections.Sounds.Any(s => s.SelfId == childId);
+                    if (isSound) continue;
+                    string childName = containerChildren.Count > 1
+                        ? $"{containerName}_{idx++}"
+                        : containerName;
+                    PropagateNameDown(childId, childName, mixerName, sections, visited);
+                }
+            }
         }
 
         private uint FindRootParent(uint targetId, BNKSections sections)
@@ -410,7 +527,7 @@ namespace LoL_Announcer_Editor
                     string containerGuid = GenerateGuid();
                     _containerIdToGuid[targetId] = containerGuid;
                     
-                    string containerName = suggestedName ?? $"Container_{targetId}";
+                    string containerName = suggestedName ?? (_objectNameMap.TryGetValue(targetId, out var rcName) ? rcName : $"Container_{targetId}");
                     return CreateRandomSequenceContainer(containerName, containerGuid, targetId.ToString(), randomContainer, sections, soundMap, projectFolder);
                 }
 
@@ -421,7 +538,7 @@ namespace LoL_Announcer_Editor
                     string containerGuid = GenerateGuid();
                     _containerIdToGuid[targetId] = containerGuid;
                     
-                    string containerName = suggestedName ?? $"Switch_{targetId}";
+                    string containerName = suggestedName ?? (_objectNameMap.TryGetValue(targetId, out var swName) ? swName : $"Switch_{targetId}");
                     return CreateSwitchContainer(containerName, containerGuid, targetId.ToString(), switchContainer, sections, soundMap, projectFolder);
                 }
 
@@ -432,7 +549,7 @@ namespace LoL_Announcer_Editor
                     string containerGuid = GenerateGuid();
                     _containerIdToGuid[targetId] = containerGuid;
                     
-                    string containerName = suggestedName ?? $"Mixer_{targetId}";
+                    string containerName = suggestedName ?? (_objectNameMap.TryGetValue(targetId, out var amName) ? amName : $"Mixer_{targetId}");
                     return CreateActorMixer(containerName, containerGuid, targetId.ToString(), actorMixer, sections, soundMap, projectFolder);
                 }
 
