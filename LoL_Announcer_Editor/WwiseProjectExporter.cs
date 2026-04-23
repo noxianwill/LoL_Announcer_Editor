@@ -77,12 +77,12 @@ namespace LoL_Announcer_Editor
                 workUnitElement.Add(childrenList);
             }
             
-            WwiseExporterLogger.Log("Clearing existing children from Default Work Unit...");
-            childrenList.RemoveAll();
-
             // Store references for event creation
             WwiseExporterLogger.Log("Extracting project references (Buses, Conversions)...");
             ExtractReferences(actorMixerDoc);
+            
+            WwiseExporterLogger.Log("Clearing existing children from Default Work Unit...");
+            childrenList.RemoveAll();
 
             // Build Containers
             WwiseExporterLogger.Log("Building Actor-Mixer Hierarchy (Containers and Sounds)...");
@@ -590,6 +590,9 @@ namespace LoL_Announcer_Editor
                 mediaId.SetAttributeValue("ID", wemId.ToString());
             }
 
+            // CRITICAL: Ensure every sound has a unique GUID in the hierarchy to avoid ObjectIDConflict
+            soundEl.SetAttributeValue("ID", GenerateGuid());
+
             // Force IsStreamingEnabled to True so Wwise doesn't require media to be embedded in a SoundBank
             var propertyList = soundEl.Elements().FirstOrDefault(e => e.Name.LocalName == "PropertyList");
             if (propertyList == null)
@@ -613,6 +616,37 @@ namespace LoL_Announcer_Editor
                 streamingProp.SetAttributeValue("Value", "True");
             }
 
+            // Ensure the sound has an OutputBus reference
+            var refList = soundEl.Elements().FirstOrDefault(e => e.Name.LocalName == "ReferenceList");
+            if (refList == null)
+            {
+                refList = new XElement("ReferenceList");
+                soundEl.Add(refList);
+            }
+            
+            if (!refList.Elements().Any(e => e.Attribute("Name")?.Value == "OutputBus"))
+            {
+                refList.Add(CreateOutputBusReference());
+            }
+
+            // Ensure ActiveSource points to the correct AudioFileSource ID
+            string newSourceGuid = GenerateGuid();
+            if (audioFileSource != null)
+            {
+                audioFileSource.SetAttributeValue("ID", newSourceGuid);
+            }
+            
+            var activeSourceList = soundEl.Elements().FirstOrDefault(e => e.Name.LocalName == "ActiveSourceList");
+            if (activeSourceList != null)
+            {
+                var activeSource = activeSourceList.Elements().FirstOrDefault(e => e.Name.LocalName == "ActiveSource");
+                if (activeSource != null)
+                {
+                    activeSource.SetAttributeValue("ID", newSourceGuid);
+                    activeSource.SetAttributeValue("Platform", "Linked");
+                }
+            }
+
             return soundEl;
         }
 
@@ -631,6 +665,14 @@ namespace LoL_Announcer_Editor
                     objRef.Add(new XAttribute("WorkUnitID", _masterBusWorkUnitId));
 
                 reference.Add(objRef);
+            }
+            else
+            {
+                // Fallback to a standard Master Audio Bus ID if detection failed
+                reference.Add(new XElement("ObjectRef",
+                    new XAttribute("Name", "Master Audio Bus"),
+                    new XAttribute("ID", "{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}"),
+                    new XAttribute("WorkUnitID", "{369ABE4C-65A8-4E42-B131-19EA9DCE2363}")));
             }
 
             return reference;
