@@ -364,7 +364,8 @@ namespace LoL_Announcer_Editor
                     if (action == null) continue;
 
                     uint rootId = FindRootParent(action.SoundObjectId, sections);
-                    PropagateNameDown(rootId, containerName, mixerName, sections, new HashSet<uint>(), isRoot: true);
+                    // Pass the FULL event name for containers
+                    PropagateNameDown(rootId, eventName, mixerName, sections, new HashSet<uint>(), isRoot: true);
                 }
             }
         }
@@ -376,17 +377,16 @@ namespace LoL_Announcer_Editor
             // Only assign if not already named (first event wins)
             if (!_objectNameMap.ContainsKey(id))
             {
-                // We use the ID as a suffix to GUARANTEE uniqueness and stop all "NameConflict" errors.
                 if (sections.ActorMixers.Any(a => a.SelfId == id))
                 {
-                    // Mixers are generic and only use their unique ID
+                    // Mixers only use their unique ID
                     _objectNameMap[id] = $"Mixer_{id}";
                 }
                 else if (sections.RandomContainers.Any(r => r.SelfId == id) || 
                          sections.SwitchContainers.Any(s => s.SelfId == id))
                 {
-                    // Only Containers carry the event name context
-                    _objectNameMap[id] = $"{containerName}_{id}";
+                    // Containers use the FULL event name (no IDs)
+                    _objectNameMap[id] = containerName;
                 }
                 // Sounds: intentionally not renamed — they keep their numeric IDs
             }
