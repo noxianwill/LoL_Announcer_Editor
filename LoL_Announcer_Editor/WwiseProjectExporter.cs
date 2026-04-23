@@ -473,12 +473,14 @@ namespace LoL_Announcer_Editor
                     new XElement("AudioFileSource",
                         new XAttribute("Name", wemName),
                         new XAttribute("ID", audioSourceGuid),
+                        new XAttribute("ShortID", wemId.ToString()), // CRITICAL: this becomes the SourceId in the compiled BNK
                         new XElement("Language", "SFX"),
                         new XElement("AudioFile", $"{wemId}.wav"))),
                 new XElement("ActiveSourceList",
                     new XElement("ActiveSource",
                         new XAttribute("Name", wemName),
                         new XAttribute("ID", audioSourceGuid),
+                        new XAttribute("ShortID", wemId.ToString()),
                         new XAttribute("Platform", "Linked"))));
 
             return RepairSoundElement(soundElement, wemId, projectFolder);
@@ -560,6 +562,26 @@ namespace LoL_Announcer_Editor
                 audioFileEl.Value = $"{wemId}.wav"; // Just the filename
                 var langEl = audioFileEl.Parent?.Elements().FirstOrDefault(e => e.Name.LocalName == "Language");
                 if (langEl != null) langEl.Value = "English(US)";
+            }
+
+            // CRITICAL: Force ShortID on AudioFileSource to the wemId.
+            // This is what Wwise uses as SourceId when compiling the BNK.
+            var audioFileSource = audioFileEl.Parent;
+            if (audioFileSource != null)
+            {
+                audioFileSource.SetAttributeValue("ShortID", wemId.ToString());
+                // Sync the ID on AudioFileSource to its own GUID (keeps it consistent)
+                var sourceId = audioFileSource.Attribute("ID")?.Value;
+                // Also fix any matching ActiveSource entry
+                if (!string.IsNullOrEmpty(sourceId))
+                {
+                    var activeSource = soundEl.Descendants()
+                        .FirstOrDefault(e => e.Name.LocalName == "ActiveSource" && e.Attribute("ID")?.Value == sourceId);
+                    if (activeSource != null)
+                    {
+                        activeSource.SetAttributeValue("ShortID", wemId.ToString());
+                    }
+                }
             }
 
             // Force IsStreamingEnabled to True so Wwise doesn't require media to be embedded in a SoundBank
