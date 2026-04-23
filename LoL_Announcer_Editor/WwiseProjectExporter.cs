@@ -408,51 +408,8 @@ namespace LoL_Announcer_Editor
             return RepairSoundElement(soundElement, wemId, projectFolder);
         }
 
-        private XElement CreateSwitchContainer(string name, string guid, string shortId, SwitchContainer sc, BNKSections sections, Dictionary<uint, XElement> soundMap, string projectFolder)
-        {
-            var childrenList = new XElement("ChildrenList");
-            foreach (var childId in sc.Children)
-            {
-                var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == childId);
-                if (sound != null)
-                {
-                    if (soundMap.TryGetValue(sound.SourceId, out var soundEl))
-                        childrenList.Add(RepairSoundElement(new XElement(soundEl), sound.SourceId, projectFolder, sound.SelfId.ToString()));
-                    else
-                        childrenList.Add(CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, null, sound.SelfId.ToString()));
-                }
-            }
 
-            return new XElement("SwitchContainer",
-                new XAttribute("Name", name),
-                new XAttribute("ID", guid),
-                new XAttribute("ShortID", shortId),
-                new XElement("ReferenceList", CreateOutputBusReference()),
-                childrenList);
-        }
 
-        private XElement CreateActorMixer(string name, string guid, string shortId, ActorMixer am, BNKSections sections, Dictionary<uint, XElement> soundMap, string projectFolder)
-        {
-            var childrenList = new XElement("ChildrenList");
-            foreach (var childId in am.Children)
-            {
-                var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == childId);
-                if (sound != null)
-                {
-                    if (soundMap.TryGetValue(sound.SourceId, out var soundEl))
-                        childrenList.Add(RepairSoundElement(new XElement(soundEl), sound.SourceId, projectFolder, sound.SelfId.ToString()));
-                    else
-                        childrenList.Add(CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, null, sound.SelfId.ToString()));
-                }
-            }
-
-            return new XElement("ActorMixer",
-                new XAttribute("Name", name),
-                new XAttribute("ID", guid),
-                new XAttribute("ShortID", shortId),
-                new XElement("ReferenceList", CreateOutputBusReference()),
-                childrenList);
-        }
 
         private XElement RepairSoundElement(XElement soundEl, uint wemId, string projectPath, string soundShortId = null)
         {
