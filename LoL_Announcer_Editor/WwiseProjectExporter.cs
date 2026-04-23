@@ -480,7 +480,6 @@ namespace LoL_Announcer_Editor
                     new XElement("ActiveSource",
                         new XAttribute("Name", wemName),
                         new XAttribute("ID", audioSourceGuid),
-                        new XAttribute("ShortID", wemId.ToString()),
                         new XAttribute("Platform", "Linked"))));
 
             return RepairSoundElement(soundElement, wemId, projectFolder);
@@ -570,18 +569,8 @@ namespace LoL_Announcer_Editor
             if (audioFileSource != null)
             {
                 audioFileSource.SetAttributeValue("ShortID", wemId.ToString());
-                // Sync the ID on AudioFileSource to its own GUID (keeps it consistent)
-                var sourceId = audioFileSource.Attribute("ID")?.Value;
-                // Also fix any matching ActiveSource entry
-                if (!string.IsNullOrEmpty(sourceId))
-                {
-                    var activeSource = soundEl.Descendants()
-                        .FirstOrDefault(e => e.Name.LocalName == "ActiveSource" && e.Attribute("ID")?.Value == sourceId);
-                    if (activeSource != null)
-                    {
-                        activeSource.SetAttributeValue("ShortID", wemId.ToString());
-                    }
-                }
+                // NOTE: ActiveSource does NOT support ShortID in Wwise's XML schema.
+                // Only AudioFileSource.ShortID drives the compiled SourceId.
             }
 
             // Force IsStreamingEnabled to True so Wwise doesn't require media to be embedded in a SoundBank
