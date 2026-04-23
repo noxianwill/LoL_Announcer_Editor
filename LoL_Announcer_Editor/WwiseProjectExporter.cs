@@ -554,8 +554,8 @@ namespace LoL_Announcer_Editor
                     new XElement("AudioFileSource",
                         new XAttribute("Name", wemName),
                         new XAttribute("ID", audioSourceGuid),
-                        new XAttribute("ShortID", wemId.ToString()), // CRITICAL: this becomes the SourceId in the compiled BNK
-                        new XElement("Language", "SFX"),
+                        new XAttribute("ShortID", wemId.ToString()),
+                        new XElement("Language", "English(US)"),
                         new XElement("AudioFile", $"{wemId}.wav"),
                         new XElement("MediaIDList",
                             new XElement("MediaID", new XAttribute("ID", wemId.ToString()))))),
@@ -564,7 +564,6 @@ namespace LoL_Announcer_Editor
                         new XAttribute("Name", wemName),
                         new XAttribute("ID", audioSourceGuid),
                         new XAttribute("Platform", "Linked"))));
-
             return RepairSoundElement(soundElement, wemId, projectFolder);
         }
 
@@ -743,7 +742,7 @@ namespace LoL_Announcer_Editor
                 reference.Add(new XElement("ObjectRef",
                     new XAttribute("Name", "Default Conversion Settings"),
                     new XAttribute("ID", "{6D1B890C-9826-4384-BF07-C15223E9FB56}"),
-                    new XAttribute("WorkUnitID", "{F68BC201-9040-4209-A45F-53C79A46C444}")));
+                    new XAttribute("WorkUnitID", "{074B1442-E293-4C13-ACAD-9B61AC71E7A5}")));
             }
 
             return reference;
@@ -784,16 +783,21 @@ namespace LoL_Announcer_Editor
                 // Mapping for common integer properties if needed
             }
 
-            // --- Advanced Settings (BNK 145) ---
-            // AdvBits: bit0=KillNewest, bit1=UseVirtualBehavior, bit3=IgnoreParentMaxNumInst, bit4=IsVVoicesOptOverrideParent
-            SetProperty(propertyList, "MaxReachedBehavior", "int16", ((nbp.AdvBits & 0x01) != 0 ? "1" : "0")); // 1=Kill Newest, 0=Kill Oldest
-            SetProperty(propertyList, "OverLimitBehavior", "int16", ((nbp.AdvBits & 0x01) != 0 ? "1" : "0"));
+            // AdvBits BNK 145: bit0=MaxReachedBehavior, bit1=UseVirtualBehavior, bit2=OverLimitBehavior
+            WwiseExporterLogger.Log($"    Node {element.Attribute("Name")?.Value} AdvBits: 0x{nbp.AdvBits:X2}");
             
-            // Virtual Behavior
-            // Wwise XML: 0=Continue to play, 1=Kill voice, 2=Send to virtual, 3=Play from beginning, 4=Play from elapsed time
-            SetProperty(propertyList, "UseVirtualBehavior", "bool", ((nbp.AdvBits & 0x02) != 0 ? "True" : "False"));
+            int maxReached = (nbp.AdvBits & 0x01) != 0 ? 1 : 0;
+            int overLimit = (nbp.AdvBits & 0x04) != 0 ? 1 : 0;
+            bool useVirtual = (nbp.AdvBits & 0x02) != 0;
+
+            SetProperty(propertyList, "MaxReachedBehavior", "int16", maxReached.ToString());
+            SetProperty(propertyList, "OverLimitBehavior", "int16", overLimit.ToString());
+            SetProperty(propertyList, "UseVirtualBehavior", "bool", useVirtual ? "True" : "False");
+            
             SetProperty(propertyList, "VirtualVoiceQueueBehavior", "int16", nbp.VirtualQueueBehavior.ToString());
             SetProperty(propertyList, "BelowThresholdBehavior", "int16", nbp.BelowThresholdBehavior.ToString());
+            
+            WwiseExporterLogger.Log($"    Mapped: MaxReached={maxReached}, OverLimit={overLimit}, UseVirtual={useVirtual}");
 
             if (nbp.MaxNumInstance > 0)
             {
@@ -837,7 +841,7 @@ namespace LoL_Announcer_Editor
                 if (childElement != null)
                 {
                     var playlistItem = container.Playlist.FirstOrDefault(p => p.Id == childId);
-                    if (playlistItem != null)
+                    if (playlistItem != null && playlistItem.Weight != 50000)
                     {
                         var childPropList = childElement.Element("PropertyList") ?? new XElement("PropertyList");
                         if (childElement.Element("PropertyList") == null) childElement.AddFirst(childPropList);
@@ -850,8 +854,15 @@ namespace LoL_Announcer_Editor
 
             // Container Properties
             var propList = new XElement("PropertyList");
-            SetProperty(propList, "RandomOrSequence", "int16", container.Mode.ToString());
-            SetProperty(propList, "ContainerModeRandom", "int16", container.RandomMode.ToString());
+            // Wwise XML: RandomOrSequence=0 is Sequence, 1 is Random (Inverted compared to BNK 145)
+            // BNK: Mode=0 is Random, 1 is Sequence.
+            int xmlMode = (container.Mode == 0) ? 1 : 0;
+            SetProperty(propList, "RandomOrSequence", "int16", xmlMode.ToString());
+            
+            // Wwise 2022.1 property for Shuffle is NormalOrShuffle.
+            // 0 is Shuffle, 1 is Standard (Inverted compared to BNK 145)
+            int xmlShuffle = (container.RandomMode == 0) ? 1 : 0;
+            SetProperty(propList, "NormalOrShuffle", "int16", xmlShuffle.ToString());
             SetProperty(propList, "NormalOrContinuous", "int16", ((container.byBitVector >> 3) & 1).ToString());
             SetProperty(propList, "TransitionTime", "Real64", container.TransitionTime.ToString("G17", System.Globalization.CultureInfo.InvariantCulture));
             SetProperty(propList, "AvoidRepeatCount", "int16", container.AvoidRepeatCount.ToString());
@@ -946,17 +957,20 @@ namespace LoL_Announcer_Editor
 
         private XDocument CreateDefaultSoundBanksWorkUnit()
         {
+            string workUnitGuid = "{" + Guid.NewGuid().ToString().ToUpper() + "}";
+            
             return new XDocument(
                 new XDeclaration("1.0", "utf-8", null),
                 new XElement("WwiseDocument",
                     new XAttribute("Type", "WorkUnit"),
-                    new XAttribute("ID", "{" + Guid.NewGuid().ToString().ToUpper() + "}"),
+                    new XAttribute("ID", workUnitGuid),
                     new XAttribute("SchemaVersion", "110"),
                     new XElement("SoundBanks",
                         new XElement("WorkUnit",
                             new XAttribute("Name", "Default Work Unit"),
-                            new XAttribute("ID", "{" + Guid.NewGuid().ToString().ToUpper() + "}"),
-                            new XAttribute("PersistMode", "Standalone")
+                            new XAttribute("ID", workUnitGuid),
+                            new XAttribute("PersistMode", "Standalone"),
+                            new XElement("ChildrenList")
                         )
                     )
                 )
@@ -1071,7 +1085,7 @@ namespace LoL_Announcer_Editor
                     new XAttribute("ID", evt.Attribute("ID")?.Value ?? ""),
                     new XAttribute("WorkUnitID", eventsWorkUnitId),
                     new XAttribute("Origin", "Manual"),
-                    new XAttribute("Filter", "3") // 3 = Events and Structures only (Media unchecked)
+                    new XAttribute("Filter", "7") // 7 = Events, Structures and Media
                 ));
             }
 
