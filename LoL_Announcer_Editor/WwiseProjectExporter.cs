@@ -851,7 +851,7 @@ namespace LoL_Announcer_Editor
         {
             var childrenList = new XElement("ChildrenList");
             
-            var childIds = container.ChildrenIds;
+            var childIds = container.Children;
             foreach (var childId in childIds)
             {
                 var childElement = BuildHierarchyRecursive(childId, sections, soundMap, projectFolder);
@@ -881,7 +881,7 @@ namespace LoL_Announcer_Editor
         {
             var childrenList = new XElement("ChildrenList");
             
-            var childIds = container.ChildrenIds;
+            var childIds = container.Children;
             foreach (var childId in childIds)
             {
                 var childElement = BuildHierarchyRecursive(childId, sections, soundMap, projectFolder);
