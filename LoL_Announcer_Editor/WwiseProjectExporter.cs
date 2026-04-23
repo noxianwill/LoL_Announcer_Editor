@@ -261,6 +261,8 @@ namespace LoL_Announcer_Editor
                     var eventAction = sections.EventActions.FirstOrDefault(ea => ea.SelfId == eventActionId);
                     if (eventAction == null) continue;
 
+                    string eventName = eventNameLookup.TryGetValue(bnkEvent.SelfId, out var name) ? name : $"Event_{bnkEvent.SelfId}";
+
                     // Use the Event name (prefixed with Cnt_) as a suggested name for the top-level container
                     string suggestedName = eventName.Replace("Play_", "Cnt_");
 
