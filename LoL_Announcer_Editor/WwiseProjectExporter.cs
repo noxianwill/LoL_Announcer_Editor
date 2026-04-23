@@ -475,7 +475,9 @@ namespace LoL_Announcer_Editor
                         new XAttribute("ID", audioSourceGuid),
                         new XAttribute("ShortID", wemId.ToString()), // CRITICAL: this becomes the SourceId in the compiled BNK
                         new XElement("Language", "SFX"),
-                        new XElement("AudioFile", $"{wemId}.wav"))),
+                        new XElement("AudioFile", $"{wemId}.wav"),
+                        new XElement("MediaIDList",
+                            new XElement("MediaID", new XAttribute("ID", wemId.ToString()))))),
                 new XElement("ActiveSourceList",
                     new XElement("ActiveSource",
                         new XAttribute("Name", wemName),
@@ -569,8 +571,23 @@ namespace LoL_Announcer_Editor
             if (audioFileSource != null)
             {
                 audioFileSource.SetAttributeValue("ShortID", wemId.ToString());
-                // NOTE: ActiveSource does NOT support ShortID in Wwise's XML schema.
-                // Only AudioFileSource.ShortID drives the compiled SourceId.
+                
+                // CRITICAL: Wwise 2022.1 uses MediaIDList to store the compiled SourceId.
+                // If we don't force this, Wwise generates a random ID.
+                var mediaIdList = audioFileSource.Elements().FirstOrDefault(e => e.Name.LocalName == "MediaIDList");
+                if (mediaIdList == null)
+                {
+                    mediaIdList = new XElement("MediaIDList");
+                    audioFileSource.Add(mediaIdList);
+                }
+                
+                var mediaId = mediaIdList.Elements().FirstOrDefault(e => e.Name.LocalName == "MediaID");
+                if (mediaId == null)
+                {
+                    mediaId = new XElement("MediaID");
+                    mediaIdList.Add(mediaId);
+                }
+                mediaId.SetAttributeValue("ID", wemId.ToString());
             }
 
             // Force IsStreamingEnabled to True so Wwise doesn't require media to be embedded in a SoundBank
@@ -803,7 +820,7 @@ namespace LoL_Announcer_Editor
                     new XAttribute("ID", evt.Attribute("ID")?.Value ?? ""),
                     new XAttribute("WorkUnitID", eventsWorkUnitId),
                     new XAttribute("Origin", "Manual"),
-                    new XAttribute("Filter", "7") // 7 = Events, Structures and Media
+                    new XAttribute("Filter", "3") // 3 = Events and Structures only (Media unchecked)
                 ));
             }
 
