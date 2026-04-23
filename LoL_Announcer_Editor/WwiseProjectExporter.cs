@@ -48,6 +48,13 @@ namespace LoL_Announcer_Editor
             var actorMixerDoc = XDocument.Load(actorMixerWwuPath);
             var eventsDoc = XDocument.Load(eventsWwuPath);
 
+            string conversionWwuPath = Path.Combine(projectFolder, "Conversion Settings", "Default Work Unit.wwu");
+            XDocument conversionDoc = null;
+            if (File.Exists(conversionWwuPath))
+            {
+                conversionDoc = XDocument.Load(conversionWwuPath);
+            }
+
             // 3. Extract existing Sound objects from the Default Work Unit
             var soundMap = ExtractExistingSounds(actorMixerDoc);
             WwiseExporterLogger.Log($"Sound Map build complete. {soundMap.Count} sounds ready for re-parenting.");
@@ -80,7 +87,7 @@ namespace LoL_Announcer_Editor
             
             // Store references for event creation
             WwiseExporterLogger.Log("Extracting project references (Buses, Conversions)...");
-            ExtractReferences(actorMixerDoc);
+            ExtractReferences(actorMixerDoc, conversionDoc);
             
             WwiseExporterLogger.Log("Clearing existing children from Default Work Unit...");
             childrenList.RemoveAll();
@@ -252,14 +259,14 @@ namespace LoL_Announcer_Editor
             }
         }
 
-        private void ExtractReferences(XDocument doc)
+        private void ExtractReferences(XDocument actorMixerDoc, XDocument conversionDoc)
         {
-            var workUnit = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "WorkUnit" && e.Attribute("Name")?.Value == "Default Work Unit");
+            var workUnit = actorMixerDoc.Descendants().FirstOrDefault(e => e.Name.LocalName == "WorkUnit" && e.Attribute("Name")?.Value == "Default Work Unit");
 
             if (workUnit != null)
                 _actorMixerWorkUnitId = workUnit.Attribute("ID")?.Value ?? "";
 
-            var outputBusRef = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "Reference" && e.Attribute("Name")?.Value == "OutputBus");
+            var outputBusRef = actorMixerDoc.Descendants().FirstOrDefault(e => e.Name.LocalName == "Reference" && e.Attribute("Name")?.Value == "OutputBus");
 
             if (outputBusRef != null)
             {
@@ -271,15 +278,21 @@ namespace LoL_Announcer_Editor
                 }
             }
 
-            var conversionRef = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "Reference" && e.Attribute("Name")?.Value == "Conversion");
-
-            if (conversionRef != null)
+            // Extract Conversion Settings ID from the conversion settings work unit
+            if (conversionDoc != null)
             {
-                var objRef = conversionRef.Elements().FirstOrDefault(e => e.Name.LocalName == "ObjectRef");
-                if (objRef != null)
+                var conversionWorkUnit = conversionDoc.Descendants().FirstOrDefault(e => e.Name.LocalName == "WorkUnit");
+                if (conversionWorkUnit != null)
                 {
-                    _conversionSettingsId = objRef.Attribute("ID")?.Value ?? "";
-                    _conversionSettingsWorkUnitId = objRef.Attribute("WorkUnitID")?.Value ?? "";
+                    _conversionSettingsWorkUnitId = conversionWorkUnit.Attribute("ID")?.Value ?? "";
+                    
+                    var conversionSettings = conversionDoc.Descendants()
+                        .FirstOrDefault(e => e.Name.LocalName == "Conversion" && e.Attribute("Name")?.Value == "Default Conversion Settings");
+                    
+                    if (conversionSettings != null)
+                    {
+                        _conversionSettingsId = conversionSettings.Attribute("ID")?.Value ?? "";
+                    }
                 }
             }
         }
@@ -523,123 +536,6 @@ namespace LoL_Announcer_Editor
             }
         }
 
-        private XElement CreateRandomSequenceContainer(
-            string name,
-            string guid,
-            string shortId,
-            RandomContainer container,
-            BNKSections sections,
-            Dictionary<uint, XElement> soundMap,
-            string projectFolder)
-        {
-            var childrenList = new XElement("ChildrenList");
-            WwiseExporterLogger.Log($"Building Container '{name}' (ID: {container.SelfId})");
-
-            var childIds = container.ChildrenIds.Count > 0
-                ? container.ChildrenIds.ToList()
-                : container.SoundIds.ToList();
-
-            // Ensure all items in the playlist are also treated as children
-            if (container.Playlist != null)
-            {
-                foreach (var item in container.Playlist)
-                {
-                    if (!childIds.Contains(item.Id))
-                    {
-                        childIds.Add(item.Id);
-                    }
-                }
-            }
-
-            foreach (var childId in childIds)
-            {
-                var childElement = BuildHierarchyRecursive(childId, sections, soundMap, projectFolder);
-                if (childElement != null)
-                {
-                    // Apply weight if it exists in the playlist
-                    var playlistItem = container.Playlist.FirstOrDefault(p => p.Id == childId);
-                    if (playlistItem != null)
-                    {
-                        var childPropList = childElement.Element("PropertyList");
-                        if (childPropList == null)
-                        {
-                            childPropList = new XElement("PropertyList");
-                            childElement.AddFirst(childPropList);
-                        }
-                        childPropList.Add(new XElement("Property",
-                            new XAttribute("Name", "Weight"),
-                            new XAttribute("Type", "Real64"),
-                            new XAttribute("Value", (playlistItem.Weight / 1000.0).ToString("F1"))));
-                    }
-                    childrenList.Add(childElement);
-                }
-            }
-
-            // Re-apply properties from BNK data
-            var propList = new XElement("PropertyList",
-                new XElement("Property",
-                    new XAttribute("Name", "RandomOrSequence"),
-                    new XAttribute("Type", "int16"),
-                    new XAttribute("Value", container.Mode.ToString())), // 0 = Random, 1 = Sequence
-                new XElement("Property",
-                    new XAttribute("Name", "ContainerModeRandom"),
-                    new XAttribute("Type", "int16"),
-                    new XAttribute("Value", container.RandomMode.ToString())), // 1 = Shuffle
-                new XElement("Property",
-                    new XAttribute("Name", "NormalOrContinuous"),
-                    new XAttribute("Type", "int16"),
-                    new XAttribute("Value", ((container.byBitVector >> 3) & 1).ToString())), // bit3 bIsContinuous
-                new XElement("Property",
-                    new XAttribute("Name", "TransitionTime"),
-                    new XAttribute("Type", "Real64"),
-                    new XAttribute("Value", container.TransitionTime.ToString("F1"))),
-                new XElement("Property",
-                    new XAttribute("Name", "AvoidRepeatCount"),
-                    new XAttribute("Type", "int16"),
-                    new XAttribute("Value", container.AvoidRepeatCount.ToString())),
-                new XElement("Property",
-                    new XAttribute("Name", "ResetPlayListAtEachPlay"),
-                    new XAttribute("Type", "bool"),
-                    new XAttribute("Value", ((container.byBitVector >> 1) & 1) == 1 ? "True" : "False")),
-                new XElement("Property",
-                    new XAttribute("Name", "Scope"),
-                    new XAttribute("Type", "int16"),
-                    new XAttribute("Value", ((container.byBitVector >> 4) & 1).ToString()))); // 0 = Game Object, 1 = Global
-
-            var containerElement = new XElement("RandomSequenceContainer",
-                new XAttribute("Name", name),
-                new XAttribute("ID", guid),
-                new XAttribute("ShortID", shortId),
-                propList,
-                new XElement("ReferenceList",
-                    CreateOutputBusReference()),
-                childrenList);
-
-            // Reconstruct Playlist with simple ItemRefs (no children/attributes)
-            if (container.Playlist != null && container.Playlist.Count > 0)
-            {
-                var playlistElement = new XElement("Playlist");
-                foreach (var item in container.Playlist)
-                {
-                    if (_containerIdToGuid.TryGetValue(item.Id, out var childGuid))
-                    {
-                        playlistElement.Add(new XElement("ItemRef",
-                            new XAttribute("Name", item.Id.ToString()),
-                            new XAttribute("ID", childGuid)));
-                    }
-                }
-                containerElement.Add(playlistElement);
-            }
-
-            ApplyNodeProperties(containerElement, container.NodeBaseParams);
-            return containerElement;
-        }
-
-
-
-        /// <summary>
-        /// Create a Sound element programmatically
-        /// </summary>
         private XElement CreateSoundElement(uint wemId, uint soundId, string projectFolder, string soundGuid = null, string soundShortId = null)
         {
             soundGuid = soundGuid ?? GenerateGuid();
@@ -864,7 +760,7 @@ namespace LoL_Announcer_Editor
                 element.AddFirst(propertyList);
             }
 
-            // Map BNK Property IDs to Wwise XML Property Names
+            // --- Real64 Properties ---
             foreach (var prop in nbp.Props)
             {
                 string propName = prop.ID switch
@@ -878,142 +774,118 @@ namespace LoL_Announcer_Editor
 
                 if (propName != null)
                 {
-                    // Ensure we don't add duplicate properties
-                    var existing = propertyList.Elements("Property").FirstOrDefault(e => e.Attribute("Name")?.Value == propName);
-                    if (existing != null)
-                    {
-                        existing.SetAttributeValue("Value", prop.Value.ToString("F1"));
-                    }
-                    else
-                    {
-                        propertyList.Add(new XElement("Property",
-                            new XAttribute("Name", propName),
-                            new XAttribute("Type", "Real64"),
-                            new XAttribute("Value", prop.Value.ToString("F1"))));
-                    }
+                    SetProperty(propertyList, propName, "Real64", prop.Value.ToString("G17", System.Globalization.CultureInfo.InvariantCulture));
                 }
             }
 
-            // Map BNK Integer Property IDs
+            // --- Int32 Properties ---
             foreach (var prop in nbp.PropsInt)
             {
-                // Currently no specific integer properties to map for announcer, 
-                // but we'll add the generic structure to be safe.
-                string propName = prop.ID switch
-                {
-                    _ => null
-                };
-
-                if (propName != null)
-                {
-                    var existing = propertyList.Elements("Property").FirstOrDefault(e => e.Attribute("Name")?.Value == propName);
-                    if (existing != null)
-                    {
-                        existing.SetAttributeValue("Value", prop.Value.ToString());
-                    }
-                    else
-                    {
-                        propertyList.Add(new XElement("Property",
-                            new XAttribute("Name", propName),
-                            new XAttribute("Type", "int32"),
-                            new XAttribute("Value", prop.Value.ToString())));
-                    }
-                }
+                // Mapping for common integer properties if needed
             }
 
-            // AdvSettingsParams
-            if ((nbp.AdvBits & 0x01) != 0) // bit0 = Kill Newest
-            {
-                // In Wwise XML, this corresponds to MaxReachedBehavior = 1 (Kill Newest)
-                // and we must also enable the limit (MaxReachedBehavior = 1).
-                // Wait, MaxReachedBehavior = 1 is the ENUM for Kill Newest.
-                
-                SetProperty(propertyList, "MaxReachedBehavior", "int16", "1"); // Kill Newest
-                SetProperty(propertyList, "OverLimitBehavior", "int16", "1");  // Kill Newest
-            }
-
-            if (nbp.BelowThresholdBehavior != 0) // 1 = Kill Voice
-            {
-                SetProperty(propertyList, "BelowThresholdBehavior", "int16", nbp.BelowThresholdBehavior.ToString());
-            }
-
-            if (nbp.VirtualQueueBehavior != 0)
-            {
-                SetProperty(propertyList, "VirtualVoiceQueueBehavior", "int16", nbp.VirtualQueueBehavior.ToString());
-            }
+            // --- Advanced Settings (BNK 145) ---
+            // AdvBits: bit0=KillNewest, bit1=UseVirtualBehavior, bit3=IgnoreParentMaxNumInst, bit4=IsVVoicesOptOverrideParent
+            SetProperty(propertyList, "MaxReachedBehavior", "int16", ((nbp.AdvBits & 0x01) != 0 ? "1" : "0")); // 1=Kill Newest, 0=Kill Oldest
+            SetProperty(propertyList, "OverLimitBehavior", "int16", ((nbp.AdvBits & 0x01) != 0 ? "1" : "0"));
+            
+            // Virtual Behavior
+            // Wwise XML: 0=Continue to play, 1=Kill voice, 2=Send to virtual, 3=Play from beginning, 4=Play from elapsed time
+            SetProperty(propertyList, "UseVirtualBehavior", "bool", ((nbp.AdvBits & 0x02) != 0 ? "True" : "False"));
+            SetProperty(propertyList, "VirtualVoiceQueueBehavior", "int16", nbp.VirtualQueueBehavior.ToString());
+            SetProperty(propertyList, "BelowThresholdBehavior", "int16", nbp.BelowThresholdBehavior.ToString());
 
             if (nbp.MaxNumInstance > 0)
             {
                 SetProperty(propertyList, "MaxInstances", "int16", nbp.MaxNumInstance.ToString());
             }
-        }
-
-        private void ModifyActorMixerWorkUnit(XDocument doc, List<XElement> containers)
-        {
-            var workUnit = doc.Descendants("WorkUnit")
-                .FirstOrDefault(wu => wu.Attribute("Name")?.Value == "Default Work Unit");
-
-            if (workUnit == null) return;
-
-            var childrenList = workUnit.Element("ChildrenList");
-            if (childrenList == null)
+            
+            // Ignore Parent Max Instance
+            if ((nbp.AdvBits & 0x08) != 0)
             {
-                childrenList = new XElement("ChildrenList");
-                workUnit.Add(childrenList);
-            }
-
-            // Clear existing children to start fresh
-            childrenList.RemoveAll();
-
-            // Add all containers
-            foreach (var container in containers)
-            {
-                childrenList.Add(container);
+                SetProperty(propertyList, "IgnoreParentMaxInstances", "bool", "True");
             }
         }
 
-        private List<XElement> BuildEventsHierarchy(
+        private XElement CreateRandomSequenceContainer(
+            string name,
+            string guid,
+            string shortId,
+            RandomContainer container,
             BNKSections sections,
-            Dictionary<uint, string> eventNameLookup)
+            Dictionary<uint, XElement> soundMap,
+            string projectFolder)
         {
-            var events = new List<XElement>();
+            var childrenList = new XElement("ChildrenList");
+            WwiseExporterLogger.Log($"Building Container '{name}' (ID: {container.SelfId})");
 
-            foreach (var bnkEvent in sections.Events)
+            var childIds = container.ChildrenIds.Count > 0
+                ? container.ChildrenIds.ToList()
+                : container.SoundIds.ToList();
+
+            if (container.Playlist != null)
             {
-                string eventName = eventNameLookup.TryGetValue(bnkEvent.SelfId, out var name)
-                    ? name
-                    : $"Event_{bnkEvent.SelfId}";
-
-                string eventGuid = GenerateGuid();
-                string eventShortId = bnkEvent.SelfId.ToString();
-
-                var actionsList = new XElement("ChildrenList");
-
-                foreach (var eventActionId in bnkEvent.EventIds)
+                foreach (var item in container.Playlist)
                 {
-                    var eventAction = sections.EventActions.FirstOrDefault(ea => ea.SelfId == eventActionId);
-                    if (eventAction == null) continue;
+                    if (!childIds.Contains(item.Id)) childIds.Add(item.Id);
+                }
+            }
 
-                    if (_containerIdToGuid.TryGetValue(eventAction.SoundObjectId, out var containerGuid))
+            foreach (var childId in childIds)
+            {
+                var childElement = BuildHierarchyRecursive(childId, sections, soundMap, projectFolder);
+                if (childElement != null)
+                {
+                    var playlistItem = container.Playlist.FirstOrDefault(p => p.Id == childId);
+                    if (playlistItem != null)
                     {
-                        var actionElement = CreatePlayAction(eventName, containerGuid, eventAction.SelfId.ToString(), eventAction.FadeCurve);
-                        actionsList.Add(actionElement);
+                        var childPropList = childElement.Element("PropertyList") ?? new XElement("PropertyList");
+                        if (childElement.Element("PropertyList") == null) childElement.AddFirst(childPropList);
+                        
+                        SetProperty(childPropList, "Weight", "Real64", (playlistItem.Weight / 1000.0).ToString("G17", System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                    childrenList.Add(childElement);
+                }
+            }
+
+            // Container Properties
+            var propList = new XElement("PropertyList");
+            SetProperty(propList, "RandomOrSequence", "int16", container.Mode.ToString());
+            SetProperty(propList, "ContainerModeRandom", "int16", container.RandomMode.ToString());
+            SetProperty(propList, "NormalOrContinuous", "int16", ((container.byBitVector >> 3) & 1).ToString());
+            SetProperty(propList, "TransitionTime", "Real64", container.TransitionTime.ToString("G17", System.Globalization.CultureInfo.InvariantCulture));
+            SetProperty(propList, "AvoidRepeatCount", "int16", container.AvoidRepeatCount.ToString());
+            
+            // Flags from bit vector
+            SetProperty(propList, "ResetPlayListAtEachPlay", "bool", ((container.byBitVector >> 1) & 1) == 1 ? "True" : "False");
+            SetProperty(propList, "IsGlobal", "bool", ((container.byBitVector >> 4) & 1) == 1 ? "True" : "False");
+            SetProperty(propList, "RestartBackward", "bool", ((container.byBitVector >> 2) & 1) == 1 ? "True" : "False");
+
+            var containerElement = new XElement("RandomSequenceContainer",
+                new XAttribute("Name", name),
+                new XAttribute("ID", guid),
+                new XAttribute("ShortID", shortId),
+                propList,
+                new XElement("ReferenceList", CreateOutputBusReference()),
+                childrenList);
+
+            if (container.Playlist != null && container.Playlist.Count > 0)
+            {
+                var playlistElement = new XElement("Playlist");
+                foreach (var item in container.Playlist)
+                {
+                    if (_containerIdToGuid.TryGetValue(item.Id, out var childGuid))
+                    {
+                        playlistElement.Add(new XElement("ItemRef",
+                            new XAttribute("Name", item.Id.ToString()),
+                            new XAttribute("ID", childGuid)));
                     }
                 }
-
-                if (actionsList.HasElements)
-                {
-                    var eventElement = new XElement("Event",
-                        new XAttribute("Name", eventName),
-                        new XAttribute("ID", eventGuid),
-                        new XAttribute("ShortID", eventShortId),
-                        actionsList);
-
-                    events.Add(eventElement);
-                }
+                containerElement.Add(playlistElement);
             }
 
-            return events;
+            ApplyNodeProperties(containerElement, container.NodeBaseParams);
+            return containerElement;
         }
 
         private XElement CreatePlayAction(string targetName, string targetGuid, string actionShortId, byte fadeCurve = 4)
@@ -1090,6 +962,78 @@ namespace LoL_Announcer_Editor
                 )
             );
         }
+
+        private void ModifyActorMixerWorkUnit(XDocument doc, List<XElement> containers)
+        {
+            var workUnit = doc.Descendants("WorkUnit")
+                .FirstOrDefault(wu => wu.Attribute("Name")?.Value == "Default Work Unit");
+
+            if (workUnit == null) return;
+
+            var childrenList = workUnit.Element("ChildrenList");
+            if (childrenList == null)
+            {
+                childrenList = new XElement("ChildrenList");
+                workUnit.Add(childrenList);
+            }
+
+            // Clear existing children to start fresh
+            childrenList.RemoveAll();
+
+            // Add all containers
+            foreach (var container in containers)
+            {
+                childrenList.Add(container);
+            }
+        }
+
+        private List<XElement> BuildEventsHierarchy(
+            BNKSections sections,
+            Dictionary<uint, string> eventNameLookup)
+        {
+            var events = new List<XElement>();
+
+            foreach (var bnkEvent in sections.Events)
+            {
+                string eventName = eventNameLookup.TryGetValue(bnkEvent.SelfId, out var name)
+                    ? name
+                    : $"Event_{bnkEvent.SelfId}";
+
+                string eventGuid = GenerateGuid();
+                string eventShortId = bnkEvent.SelfId.ToString();
+
+                var actionsList = new XElement("ChildrenList");
+
+                foreach (var eventActionId in bnkEvent.EventIds)
+                {
+                    var eventAction = sections.EventActions.FirstOrDefault(ea => ea.SelfId == eventActionId);
+                    if (eventAction == null) continue;
+
+                    if (_containerIdToGuid.TryGetValue(eventAction.SoundObjectId, out var containerGuid))
+                    {
+                        var actionElement = CreatePlayAction(eventName, containerGuid, eventAction.SelfId.ToString(), eventAction.FadeCurve);
+                        actionsList.Add(actionElement);
+                    }
+                }
+
+                if (actionsList.HasElements)
+                {
+                    var eventElement = new XElement("Event",
+                        new XAttribute("Name", eventName),
+                        new XAttribute("ID", eventGuid),
+                        new XAttribute("ShortID", eventShortId),
+                        actionsList);
+
+                    events.Add(eventElement);
+                }
+            }
+
+            return events;
+        }
+
+
+
+
 
         private void ModifySoundBanksWorkUnit(XDocument doc, string eventsWorkUnitId, List<XElement> events)
         {
