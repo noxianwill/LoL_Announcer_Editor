@@ -261,8 +261,11 @@ namespace LoL_Announcer_Editor
                     var eventAction = sections.EventActions.FirstOrDefault(ea => ea.SelfId == eventActionId);
                     if (eventAction == null) continue;
 
+                    // Use the Event name (prefixed with Cnt_) as a suggested name for the top-level container
+                    string suggestedName = eventName.Replace("Play_", "Cnt_");
+
                     // This will build the entire tree for this sound object recursively
-                    var element = BuildHierarchyRecursive(eventAction.SoundObjectId, sections, soundMap, projectFolder);
+                    var element = BuildHierarchyRecursive(eventAction.SoundObjectId, sections, soundMap, projectFolder, suggestedName);
                     if (element != null)
                     {
                         containers.Add(element);
@@ -273,7 +276,7 @@ namespace LoL_Announcer_Editor
             return containers;
         }
 
-        private XElement BuildHierarchyRecursive(uint targetId, BNKSections sections, Dictionary<uint, XElement> soundMap, string projectFolder)
+        private XElement BuildHierarchyRecursive(uint targetId, BNKSections sections, Dictionary<uint, XElement> soundMap, string projectFolder, string suggestedName = null)
         {
             if (_containerIdToGuid.TryGetValue(targetId, out var existingGuid))
             {
@@ -304,7 +307,8 @@ namespace LoL_Announcer_Editor
                 string containerGuid = GenerateGuid();
                 _containerIdToGuid[targetId] = containerGuid;
                 
-                return CreateRandomSequenceContainer($"Container_{targetId}", containerGuid, targetId.ToString(), randomContainer, sections, soundMap, projectFolder);
+                string containerName = suggestedName ?? $"Container_{targetId}";
+                return CreateRandomSequenceContainer(containerName, containerGuid, targetId.ToString(), randomContainer, sections, soundMap, projectFolder);
             }
 
             // 3. Is it a Switch Container?
@@ -314,7 +318,8 @@ namespace LoL_Announcer_Editor
                 string containerGuid = GenerateGuid();
                 _containerIdToGuid[targetId] = containerGuid;
                 
-                return CreateSwitchContainer($"Switch_{targetId}", containerGuid, targetId.ToString(), switchContainer, sections, soundMap, projectFolder);
+                string containerName = suggestedName ?? $"Switch_{targetId}";
+                return CreateSwitchContainer(containerName, containerGuid, targetId.ToString(), switchContainer, sections, soundMap, projectFolder);
             }
 
             // 4. Is it an Actor Mixer?
@@ -324,7 +329,8 @@ namespace LoL_Announcer_Editor
                 string containerGuid = GenerateGuid();
                 _containerIdToGuid[targetId] = containerGuid;
                 
-                return CreateActorMixer($"Mixer_{targetId}", containerGuid, targetId.ToString(), actorMixer, sections, soundMap, projectFolder);
+                string containerName = suggestedName ?? $"Mixer_{targetId}";
+                return CreateActorMixer(containerName, containerGuid, targetId.ToString(), actorMixer, sections, soundMap, projectFolder);
             }
 
             return null;
