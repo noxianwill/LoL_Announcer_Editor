@@ -330,42 +330,32 @@ namespace LoL_Announcer_Editor
         /// objects shared by multiple events keep the first name assigned.
         /// <summary>
         /// Walks every event->action->target chain and assigns human-readable names.
-        /// Mixer: common prefix e.g. "Announcer_Female1"
-        /// Container: event-specific suffix e.g. "AceBlue"
-        /// Sounds: kept with their numeric source ID (no change)
+        /// Mixers: Mixer_[ID]
+        /// Target Container: FULL Event Name (no IDs)
+        /// Sounds: [ID]
         /// </summary>
         private void BuildObjectNameMap(BNKSections sections, Dictionary<uint, string> eventNameLookup)
         {
             _objectNameMap.Clear();
 
+            // First, name all containers and mixers by their ID as a safe default
+            foreach (var r in sections.RandomContainers) _objectNameMap[r.SelfId] = $"Container_{r.SelfId}";
+            foreach (var s in sections.SwitchContainers) _objectNameMap[s.SelfId] = $"Switch_{s.SelfId}";
+            foreach (var a in sections.ActorMixers) _objectNameMap[a.SelfId] = $"Mixer_{a.SelfId}";
+
+            // Now, override the TARGET objects with the actual event name
             foreach (var bnkEvent in sections.Events)
             {
                 string eventName = eventNameLookup.TryGetValue(bnkEvent.SelfId, out var n) ? n : $"Event_{bnkEvent.SelfId}";
-
-                // Strip common game prefixes: "Play_vo_", "Play_"
-                string stripped = eventName
-                    .Replace("Play_vo_", "")
-                    .Replace("Play_", "");
-
-                // Split into parts: ["Announcer", "Female1", "AceBlue"]
-                var parts = stripped.Split('_');
-
-                // Container name = last segment (e.g. "AceBlue")
-                string containerName = parts[parts.Length - 1];
-
-                // Mixer name = everything except the last segment (e.g. "Announcer_Female1")
-                string mixerName = parts.Length > 1
-                    ? string.Join("_", parts, 0, parts.Length - 1)
-                    : stripped;
 
                 foreach (var actionId in bnkEvent.EventIds)
                 {
                     var action = sections.EventActions.FirstOrDefault(a => a.SelfId == actionId);
                     if (action == null) continue;
 
-                    uint rootId = FindRootParent(action.SoundObjectId, sections);
-                    // Pass the FULL event name for containers
-                    PropagateNameDown(rootId, eventName, mixerName, sections, new HashSet<uint>(), isRoot: true);
+                    // The SPECIFIC object being triggered gets the event name
+                    uint targetId = action.SoundObjectId;
+                    _objectNameMap[targetId] = eventName;
                 }
             }
         }
@@ -374,23 +364,8 @@ namespace LoL_Announcer_Editor
         {
             if (!visited.Add(id)) return;
 
-            // Only assign if not already named (first event wins)
-            if (!_objectNameMap.ContainsKey(id))
-            {
-                if (sections.ActorMixers.Any(a => a.SelfId == id))
-                {
-                    // Mixers only use their unique ID
-                    _objectNameMap[id] = $"Mixer_{id}";
-                }
-                else if (sections.RandomContainers.Any(r => r.SelfId == id) || 
-                         sections.SwitchContainers.Any(s => s.SelfId == id))
-                {
-                    // Containers use the FULL event name (no IDs)
-                    _objectNameMap[id] = containerName;
-                }
-                // Sounds: intentionally not renamed — they keep their numeric IDs
-            }
-
+            // Naming is now handled pre-pass in BuildObjectNameMap, so we just recurse.
+            
             // Recurse into children
             var rc = sections.RandomContainers.FirstOrDefault(r => r.SelfId == id);
             if (rc != null)
@@ -398,7 +373,6 @@ namespace LoL_Announcer_Editor
                 var childIds = rc.ChildrenIds.Count > 0 ? rc.ChildrenIds : rc.SoundIds;
                 foreach (var childId in childIds)
                 {
-                    // Sounds keep their IDs, don't rename them here
                     if (sections.Sounds.Any(s => s.SelfId == childId)) continue;
                     PropagateNameDown(childId, containerName, mixerName, sections, visited);
                 }
