@@ -321,6 +321,12 @@ namespace LoL_Announcer_Editor
                 _currentWpkWemFiles = wemInfo.SortedWemDataList;
                 _currentWemInformation = wemInfo;  // Store full WemInformation for slot preservation
 
+                // Pre-build dictionaries for O(1) lookups
+                var eventActionMap = sections.EventActions.ToDictionary(ea => ea.SelfId);
+                var wemMap = wemInfo.SortedWemDataList.ToDictionary(w => w.Id);
+                var randomContainerMap = sections.RandomContainers.ToDictionary(r => r.SelfId);
+                var switchContainerMap = sections.SwitchContainers.ToDictionary(s => s.SelfId);
+
                 // Build tree structure: root node is WPK file, children are events, grandchildren are WEM files
                 var root = new TreeNode { Name = System.IO.Path.GetFileName(wpkPath), NodeType = NodeType.Root, ShowCheckbox = true };
 
@@ -335,17 +341,14 @@ namespace LoL_Announcer_Editor
 
                     foreach (var eventId in bnkEvent.EventIds)
                     {
-                        var eventAction = sections.EventActions.Find(ea => ea.SelfId == eventId);
-                        if (eventAction == null)
+                        if (!eventActionMap.TryGetValue(eventId, out var eventAction))
                         {
-
                             continue;
                         }
 
-
                         // Check if the SoundObjectId is a container (RandomContainer, SwitchContainer, etc.)
-                        var randomContainer = sections.RandomContainers.FirstOrDefault(r => r.SelfId == eventAction.SoundObjectId);
-                        var switchContainer = sections.SwitchContainers.FirstOrDefault(s => s.SelfId == eventAction.SoundObjectId);
+                        randomContainerMap.TryGetValue(eventAction.SoundObjectId, out var randomContainer);
+                        switchContainerMap.TryGetValue(eventAction.SoundObjectId, out var switchContainer);
 
                         TreeNode parentForWems = eventNode; // Default: add WEMs directly to event
 
@@ -371,31 +374,20 @@ namespace LoL_Announcer_Editor
                         WemAdditionLogger.Log($"Event {bnkEvent.SelfId} resolved {fileIds.Count} WEMs");
                         foreach (var fileId in fileIds)
                         {
-                            var wemFile = wemInfo.SortedWemDataList.Find(w => w.Id == fileId);
-                            if (wemFile == null)
+                            if (!wemMap.TryGetValue(fileId, out var wemFile))
                             {
-
                                 continue;
                             }
-
-                            // Create a deep copy of the AudioData to avoid shared references
-                            var wemDataCopy = new AudioData
-                            {
-                                Id = wemFile.Id,
-                                Length = wemFile.Length,
-                                Data = wemFile.Data.ToArray() // Deep copy the byte array
-                            };
 
                             var wemNode = new TreeNode
                             {
                                 Name = $"{fileId}",
-                                WemData = wemDataCopy, // Use the copy instead of the original
+                                WemData = wemFile, // Use reference instead of copy
                                 NodeType = NodeType.WemFile,
                                 ShowCheckbox = true
                             };
                             wemNode.Parent = parentForWems; // Set parent (either event or container)
                             parentForWems.Children.Add(wemNode);
-
                         }
                     }
                     // Always add the event node to the root, even if it has zero WEM children
@@ -455,7 +447,7 @@ namespace LoL_Announcer_Editor
 
                 }
                 _rootNodes.Add(root);
-                ExpandAllNodes(root);
+                root.IsExpanded = true; // Only expand the root node for better performance
                 TreeView.ItemsSource = _rootNodes;
                 // Defs.LogAction($"ParseFilesButton_Click: TreeView populated with {root.Children.Count} root nodes");
 
