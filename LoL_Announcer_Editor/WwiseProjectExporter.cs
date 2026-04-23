@@ -629,6 +629,11 @@ namespace LoL_Announcer_Editor
                 refList.Add(CreateOutputBusReference());
             }
 
+            if (!refList.Elements().Any(e => e.Attribute("Name")?.Value == "Conversion"))
+            {
+                refList.Add(CreateConversionReference());
+            }
+
             // Ensure ActiveSource points to the correct AudioFileSource ID
             string newSourceGuid = GenerateGuid();
             if (audioFileSource != null)
@@ -693,6 +698,14 @@ namespace LoL_Announcer_Editor
                     objRef.Add(new XAttribute("WorkUnitID", _conversionSettingsWorkUnitId));
 
                 reference.Add(objRef);
+            }
+            else
+            {
+                // Fallback to a standard Default Conversion Settings ID if detection failed
+                reference.Add(new XElement("ObjectRef",
+                    new XAttribute("Name", "Default Conversion Settings"),
+                    new XAttribute("ID", "{6D1B890C-9826-4384-BF07-C15223E9FB56}"),
+                    new XAttribute("WorkUnitID", "{F68BC201-9040-4209-A45F-53C79A46C444}")));
             }
 
             return reference;
