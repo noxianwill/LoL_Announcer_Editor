@@ -380,26 +380,16 @@ namespace LoL_Announcer_Editor
                 string fullName = $"{mixerName}_{containerName}";
 
                 if (sections.ActorMixers.Any(a => a.SelfId == id))
-                {
-                    _objectNameMap[id] = isRoot ? $"Mix_{fullName}" : $"Mix_{containerName}";
-                }
+                    _objectNameMap[id] = isRoot ? fullName : mixerName;
                 else if (sections.RandomContainers.Any(r => r.SelfId == id))
-                {
-                    _objectNameMap[id] = isRoot ? $"Cnt_{fullName}" : $"Cnt_{containerName}";
-                }
+                    _objectNameMap[id] = isRoot ? fullName : containerName;
                 else if (sections.SwitchContainers.Any(s => s.SelfId == id))
-                {
-                    _objectNameMap[id] = isRoot ? $"Sw_{fullName}" : $"Sw_{containerName}";
-                }
+                    _objectNameMap[id] = isRoot ? fullName : containerName;
                 // Sounds: intentionally not renamed — they keep their numeric IDs
             }
 
-            // Get a base name for children based on what we just assigned
-            string currentName = _objectNameMap.TryGetValue(id, out var n) ? n : containerName;
-            // Strip Mix_/Cnt_/Sw_ for the base of the children
-            string baseForChildren = currentName.StartsWith("Mix_") || currentName.StartsWith("Cnt_") || currentName.StartsWith("Sw_")
-                ? currentName.Substring(4)
-                : currentName;
+            // For children, we use the specific action name (e.g. "AceBlue")
+            string baseForChildren = containerName;
 
             // Recurse into children
             var rc = sections.RandomContainers.FirstOrDefault(r => r.SelfId == id);
@@ -413,7 +403,7 @@ namespace LoL_Announcer_Editor
                 {
                     if (sections.Sounds.Any(s => s.SelfId == childId)) continue;
                     
-                    // Only add index if there are multiple non-sound children
+                    // Use clean indexing (AceBlue_01) only if multiple children exist
                     string childName = nonSoundChildren.Count > 1 ? $"{baseForChildren}_{idx++:D2}" : baseForChildren;
                     PropagateNameDown(childId, childName, mixerName, sections, visited);
                 }
