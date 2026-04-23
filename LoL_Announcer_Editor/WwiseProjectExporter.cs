@@ -327,6 +327,7 @@ namespace LoL_Announcer_Editor
                 return CreateActorMixer($"Mixer_{targetId}", containerGuid, targetId.ToString(), actorMixer, sections, soundMap, projectFolder);
             }
 
+            return null;
         }
 
         private XElement CreateRandomSequenceContainer(
@@ -878,6 +879,9 @@ namespace LoL_Announcer_Editor
                 error = "Default Work Unit.wwu not found in Actor-Mixer Hierarchy";
                 return false;
             }
+
+            return true;
+        }
 
         private XElement CreateSwitchContainer(
             string name,
