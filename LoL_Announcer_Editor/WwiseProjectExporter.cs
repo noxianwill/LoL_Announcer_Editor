@@ -376,36 +376,31 @@ namespace LoL_Announcer_Editor
             // Only assign if not already named (first event wins)
             if (!_objectNameMap.ContainsKey(id))
             {
-                // Full name for the root to ensure absolute uniqueness across the project
-                string fullName = $"{mixerName}_{containerName}";
-
+                // We use the ID as a suffix to GUARANTEE uniqueness and stop all "NameConflict" errors.
                 if (sections.ActorMixers.Any(a => a.SelfId == id))
-                    _objectNameMap[id] = isRoot ? fullName : mixerName;
-                else if (sections.RandomContainers.Any(r => r.SelfId == id))
-                    _objectNameMap[id] = isRoot ? fullName : containerName;
-                else if (sections.SwitchContainers.Any(s => s.SelfId == id))
-                    _objectNameMap[id] = isRoot ? fullName : containerName;
+                {
+                    // Root Mixer gets the full event context, nested ones are just "Mixer_ID"
+                    _objectNameMap[id] = isRoot ? $"Root_{containerName}_{id}" : $"Mixer_{id}";
+                }
+                else if (sections.RandomContainers.Any(r => r.SelfId == id) || 
+                         sections.SwitchContainers.Any(s => s.SelfId == id))
+                {
+                    // Containers are named after the event + ID
+                    _objectNameMap[id] = $"{containerName}_{id}";
+                }
                 // Sounds: intentionally not renamed — they keep their numeric IDs
             }
-
-            // For children, we use the specific action name (e.g. "AceBlue")
-            string baseForChildren = containerName;
 
             // Recurse into children
             var rc = sections.RandomContainers.FirstOrDefault(r => r.SelfId == id);
             if (rc != null)
             {
                 var childIds = rc.ChildrenIds.Count > 0 ? rc.ChildrenIds : rc.SoundIds;
-                var nonSoundChildren = childIds.Where(c => !sections.Sounds.Any(s => s.SelfId == c)).ToList();
-                
-                int idx = 1;
                 foreach (var childId in childIds)
                 {
+                    // Sounds keep their IDs, don't rename them here
                     if (sections.Sounds.Any(s => s.SelfId == childId)) continue;
-                    
-                    // Use clean indexing (AceBlue_01) only if multiple children exist
-                    string childName = nonSoundChildren.Count > 1 ? $"{baseForChildren}_{idx++:D2}" : baseForChildren;
-                    PropagateNameDown(childId, childName, mixerName, sections, visited);
+                    PropagateNameDown(childId, containerName, mixerName, sections, visited);
                 }
                 return;
             }
@@ -413,13 +408,10 @@ namespace LoL_Announcer_Editor
             var sc = sections.SwitchContainers.FirstOrDefault(s => s.SelfId == id);
             if (sc != null)
             {
-                var nonSoundChildren = sc.Children.Where(c => !sections.Sounds.Any(s => s.SelfId == c)).ToList();
-                int idx = 1;
                 foreach (var childId in sc.Children)
                 {
                     if (sections.Sounds.Any(s => s.SelfId == childId)) continue;
-                    string childName = nonSoundChildren.Count > 1 ? $"{baseForChildren}_{idx++:D2}" : baseForChildren;
-                    PropagateNameDown(childId, childName, mixerName, sections, visited);
+                    PropagateNameDown(childId, containerName, mixerName, sections, visited);
                 }
                 return;
             }
@@ -427,13 +419,10 @@ namespace LoL_Announcer_Editor
             var am = sections.ActorMixers.FirstOrDefault(a => a.SelfId == id);
             if (am != null)
             {
-                var nonSoundChildren = am.Children.Where(c => !sections.Sounds.Any(s => s.SelfId == c)).ToList();
-                int idx = 1;
                 foreach (var childId in am.Children)
                 {
                     if (sections.Sounds.Any(s => s.SelfId == childId)) continue;
-                    string childName = nonSoundChildren.Count > 1 ? $"{baseForChildren}_{idx++:D2}" : baseForChildren;
-                    PropagateNameDown(childId, childName, mixerName, sections, visited);
+                    PropagateNameDown(childId, containerName, mixerName, sections, visited);
                 }
             }
         }
