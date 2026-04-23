@@ -256,116 +256,77 @@ namespace LoL_Announcer_Editor
 
             foreach (var bnkEvent in sections.Events)
             {
-                string eventName = eventNameLookup.TryGetValue(bnkEvent.SelfId, out var name)
-                    ? name
-                    : $"Event_{bnkEvent.SelfId}";
-
                 foreach (var eventActionId in bnkEvent.EventIds)
                 {
                     var eventAction = sections.EventActions.FirstOrDefault(ea => ea.SelfId == eventActionId);
                     if (eventAction == null) continue;
 
-                    var randomContainer = sections.RandomContainers.FirstOrDefault(r => r.SelfId == eventAction.SoundObjectId);
-
-                    if (randomContainer != null)
+                    // This will build the entire tree for this sound object recursively
+                    var element = BuildHierarchyRecursive(eventAction.SoundObjectId, sections, soundMap, projectFolder);
+                    if (element != null)
                     {
-                        if (_containerIdToGuid.ContainsKey(randomContainer.SelfId))
-                            continue;
-
-                        string containerGuid = GenerateGuid();
-                        string containerShortId = randomContainer.SelfId.ToString();
-                        _containerIdToGuid[randomContainer.SelfId] = containerGuid;
-
-                        var containerElement = CreateRandomSequenceContainer(
-                            eventName,
-                            containerGuid,
-                            containerShortId,
-                            randomContainer,
-                            sections,
-                            soundMap,
-                            projectFolder);
-
-                        containers.Add(containerElement);
-                    }
-                    else
-                    {
-                        var switchContainer = sections.SwitchContainers.FirstOrDefault(s => s.SelfId == eventAction.SoundObjectId);
-                        if (switchContainer != null)
-                        {
-                            if (_containerIdToGuid.ContainsKey(switchContainer.SelfId))
-                                continue;
-
-                            string containerGuid = GenerateGuid();
-                            string containerShortId = switchContainer.SelfId.ToString();
-                            _containerIdToGuid[switchContainer.SelfId] = containerGuid;
-
-                            var containerElement = CreateSwitchContainer(
-                                eventName,
-                                containerGuid,
-                                containerShortId,
-                                switchContainer,
-                                sections,
-                                soundMap,
-                                projectFolder);
-
-                            containers.Add(containerElement);
-                        }
-                        else
-                        {
-                            var actorMixer = sections.ActorMixers.FirstOrDefault(a => a.SelfId == eventAction.SoundObjectId);
-                            if (actorMixer != null)
-                            {
-                                if (_containerIdToGuid.ContainsKey(actorMixer.SelfId))
-                                    continue;
-
-                                string containerGuid = GenerateGuid();
-                                string containerShortId = actorMixer.SelfId.ToString();
-                                _containerIdToGuid[actorMixer.SelfId] = containerGuid;
-
-                                var containerElement = CreateActorMixer(
-                                    eventName,
-                                    containerGuid,
-                                    containerShortId,
-                                    actorMixer,
-                                    sections,
-                                    soundMap,
-                                    projectFolder);
-
-                                containers.Add(containerElement);
-                            }
-                            else
-                            {
-                                var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == eventAction.SoundObjectId);
-                                if (sound != null)
-                                {
-                                    if (_containerIdToGuid.ContainsKey(eventAction.SoundObjectId))
-                                        continue;
-
-                                    string soundGuid;
-                                    XElement finalSoundElement;
-
-                                    if (soundMap.TryGetValue(sound.SourceId, out var existingSoundEl))
-                                    {
-                                        finalSoundElement = RepairSoundElement(new XElement(existingSoundEl), sound.SourceId, projectFolder, sound.SelfId.ToString());
-                                        soundGuid = finalSoundElement.Attribute("ID")?.Value ?? GenerateGuid();
-                                    }
-                                    else
-                                    {
-                                        soundGuid = GenerateGuid();
-                                        string soundShortId = sound.SelfId.ToString();
-                                        finalSoundElement = CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, soundGuid, soundShortId);
-                                    }
-
-                                    _containerIdToGuid[eventAction.SoundObjectId] = soundGuid;
-                                    containers.Add(finalSoundElement);
-                                }
-                            }
-                        }
+                        containers.Add(element);
                     }
                 }
             }
 
             return containers;
+        }
+
+        private XElement BuildHierarchyRecursive(uint targetId, BNKSections sections, Dictionary<uint, XElement> soundMap, string projectFolder)
+        {
+            if (_containerIdToGuid.TryGetValue(targetId, out var existingGuid))
+            {
+                return null; // Already handled (prevent cycles or redundancy)
+            }
+
+            // 1. Is it a Sound?
+            var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == targetId);
+            if (sound != null)
+            {
+                string soundGuid = GenerateGuid();
+                _containerIdToGuid[targetId] = soundGuid;
+                
+                if (soundMap.TryGetValue(sound.SourceId, out var existingSoundEl))
+                {
+                    return RepairSoundElement(new XElement(existingSoundEl), sound.SourceId, projectFolder, sound.SelfId.ToString());
+                }
+                else
+                {
+                    return CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, soundGuid, sound.SelfId.ToString());
+                }
+            }
+
+            // 2. Is it a Random Container?
+            var randomContainer = sections.RandomContainers.FirstOrDefault(r => r.SelfId == targetId);
+            if (randomContainer != null)
+            {
+                string containerGuid = GenerateGuid();
+                _containerIdToGuid[targetId] = containerGuid;
+                
+                return CreateRandomSequenceContainer($"Container_{targetId}", containerGuid, targetId.ToString(), randomContainer, sections, soundMap, projectFolder);
+            }
+
+            // 3. Is it a Switch Container?
+            var switchContainer = sections.SwitchContainers.FirstOrDefault(s => s.SelfId == targetId);
+            if (switchContainer != null)
+            {
+                string containerGuid = GenerateGuid();
+                _containerIdToGuid[targetId] = containerGuid;
+                
+                return CreateSwitchContainer($"Switch_{targetId}", containerGuid, targetId.ToString(), switchContainer, sections, soundMap, projectFolder);
+            }
+
+            // 4. Is it an Actor Mixer?
+            var actorMixer = sections.ActorMixers.FirstOrDefault(a => a.SelfId == targetId);
+            if (actorMixer != null)
+            {
+                string containerGuid = GenerateGuid();
+                _containerIdToGuid[targetId] = containerGuid;
+                
+                return CreateActorMixer($"Mixer_{targetId}", containerGuid, targetId.ToString(), actorMixer, sections, soundMap, projectFolder);
+            }
+
         }
 
         private XElement CreateRandomSequenceContainer(
@@ -386,51 +347,10 @@ namespace LoL_Announcer_Editor
 
             foreach (var childId in childIds)
             {
-                var sound = sections.Sounds.FirstOrDefault(s => s.SelfId == childId);
-                if (sound != null)
+                var childElement = BuildHierarchyRecursive(childId, sections, soundMap, projectFolder);
+                if (childElement != null)
                 {
-                    if (soundMap.TryGetValue(sound.SourceId, out var soundElement))
-                    {
-                        WwiseExporterLogger.Log($"  + Adding Sound {sound.SourceId} (SelfId: {childId})");
-                        var repairedSound = RepairSoundElement(new XElement(soundElement), sound.SourceId, projectFolder, sound.SelfId.ToString());
-                        childrenList.Add(repairedSound);
-                        continue;
-                    }
-                    else
-                    {
-                        WwiseExporterLogger.Log($"  * Sound {sound.SourceId} (SelfId: {childId}) NOT found in project! Creating it...");
-                        var newSound = CreateSoundElement(sound.SourceId, sound.SelfId, projectFolder, null, sound.SelfId.ToString());
-                        childrenList.Add(newSound);
-                        continue;
-                    }
-                }
-
-                var nestedContainer = sections.RandomContainers.FirstOrDefault(r => r.SelfId == childId);
-                if (nestedContainer != null)
-                {
-                    var nestedSoundIds = nestedContainer.ChildrenIds.Count > 0
-                        ? nestedContainer.ChildrenIds
-                        : nestedContainer.SoundIds;
-
-                    foreach (var nestedSoundId in nestedSoundIds)
-                    {
-                        var nestedSound = sections.Sounds.FirstOrDefault(s => s.SelfId == nestedSoundId);
-                        if (nestedSound != null)
-                        {
-                            if (soundMap.TryGetValue(nestedSound.SourceId, out var nestedSoundElement))
-                            {
-                                WwiseExporterLogger.Log($"  + Adding Nested Sound {nestedSound.SourceId} (SelfId: {nestedSoundId})");
-                                var repairedSound = RepairSoundElement(new XElement(nestedSoundElement), nestedSound.SourceId, projectFolder, nestedSound.SelfId.ToString());
-                                childrenList.Add(repairedSound);
-                            }
-                            else
-                            {
-                                WwiseExporterLogger.Log($"  * Nested Sound {nestedSound.SourceId} (SelfId: {nestedSoundId}) NOT found! Creating it...");
-                                var newSound = CreateSoundElement(nestedSound.SourceId, nestedSound.SelfId, projectFolder, null, nestedSound.SelfId.ToString());
-                                childrenList.Add(newSound);
-                            }
-                        }
-                    }
+                    childrenList.Add(childElement);
                 }
             }
 
@@ -787,6 +707,11 @@ namespace LoL_Announcer_Editor
                 new XAttribute("Name", ""),
                 new XAttribute("ID", actionGuid),
                 new XAttribute("ShortID", actionShortId),
+                new XElement("PropertyList",
+                    new XElement("Property",
+                        new XAttribute("Name", "ActionType"),
+                        new XAttribute("Type", "int16"),
+                        new XAttribute("Value", "1"))), // 1 = Play
                 new XElement("ReferenceList",
                     new XElement("Reference",
                         new XAttribute("Name", "Target"),
@@ -954,7 +879,64 @@ namespace LoL_Announcer_Editor
                 return false;
             }
 
-            return true;
+        private XElement CreateSwitchContainer(
+            string name,
+            string guid,
+            string shortId,
+            SwitchContainer container,
+            BNKSections sections,
+            Dictionary<uint, XElement> soundMap,
+            string projectFolder)
+        {
+            var childrenList = new XElement("ChildrenList");
+            
+            var childIds = container.ChildrenIds;
+            foreach (var childId in childIds)
+            {
+                var childElement = BuildHierarchyRecursive(childId, sections, soundMap, projectFolder);
+                if (childElement != null)
+                {
+                    childrenList.Add(childElement);
+                }
+            }
+
+            return new XElement("SwitchContainer",
+                new XAttribute("Name", name),
+                new XAttribute("ID", guid),
+                new XAttribute("ShortID", shortId),
+                new XElement("ReferenceList",
+                    CreateOutputBusReference()),
+                childrenList);
+        }
+
+        private XElement CreateActorMixer(
+            string name,
+            string guid,
+            string shortId,
+            ActorMixer container,
+            BNKSections sections,
+            Dictionary<uint, XElement> soundMap,
+            string projectFolder)
+        {
+            var childrenList = new XElement("ChildrenList");
+            
+            var childIds = container.ChildrenIds;
+            foreach (var childId in childIds)
+            {
+                var childElement = BuildHierarchyRecursive(childId, sections, soundMap, projectFolder);
+                if (childElement != null)
+                {
+                    childrenList.Add(childElement);
+                }
+            }
+
+            return new XElement("ActorMixer",
+                new XAttribute("Name", name),
+                new XAttribute("ID", guid),
+                new XAttribute("ShortID", shortId),
+                new XElement("ReferenceList",
+                    CreateOutputBusReference()),
+                childrenList);
         }
     }
 }
