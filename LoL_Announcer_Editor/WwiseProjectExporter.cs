@@ -766,6 +766,7 @@ namespace LoL_Announcer_Editor
                 existingBank.Remove();
             }
 
+            string bankGuid = GenerateGuid();
             // SoundBank ShortID: Wwise uses FNV32 hash of the bank name.
             // Hash of "announcer_global_female1_vo_events" = 2707607260
             // Using this exact value ensures compatibility with the game engine.
