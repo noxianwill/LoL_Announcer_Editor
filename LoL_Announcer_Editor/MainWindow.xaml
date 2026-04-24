@@ -90,6 +90,7 @@
             <Button Content="Play audio" HorizontalAlignment="Left" Margin="948,447,0,0" VerticalAlignment="Top" Height="32" Width="216" Click="PlaySoundButton_Click"/>
             <Button Content="Stop all playing sounds" HorizontalAlignment="Left" Margin="948,484,0,0" VerticalAlignment="Top" Height="32" Width="216" Click="StopAllSoundsButton_Click"/>
             <Button Content="Package WEMs to WPK" HorizontalAlignment="Left" Margin="948,521,0,0" VerticalAlignment="Top" Height="32" Width="216" Click="PackageWemsToWpk_Click"/>
+            <Button x:Name="SaveProjectButton" Content="Save Project (BNK + WPK)" HorizontalAlignment="Left" Margin="948,558,0,0" VerticalAlignment="Top" Height="42" Width="216" Click="SaveProject_Click" IsEnabled="False" Background="#FF007ACC" Foreground="White" FontWeight="Bold"/>
         </Grid>
     </DockPanel>
 </Window>

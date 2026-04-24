@@ -49,10 +49,19 @@ namespace LoL_Announcer_Editor
         public bool IsChanged { get; set; }
     }
 
+    public class BnkSection
+    {
+        public string Name { get; set; } = "";
+        public byte[] Data { get; set; } = Array.Empty<byte>();
+    }
+
     public class BnkFullFidelity
     {
         public uint BnkVersion { get; set; }
+        public byte[] BkhdData { get; set; } = Array.Empty<byte>();
+        public List<BnkSection> PreHircSections { get; set; } = new List<BnkSection>();
         public List<BnkObjectRecord> AllObjectsInOrder { get; set; } = new List<BnkObjectRecord>();
+        public List<BnkSection> PostHircSections { get; set; } = new List<BnkSection>();
     }
 
     // ──────────────────────────────────────────────────────────────────────────

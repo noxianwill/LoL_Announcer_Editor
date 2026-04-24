@@ -510,6 +510,7 @@ namespace LoL_Announcer_Editor
                 
                 // Enable the Save BNK file button since we now have BNK structure in memory
                 SaveBnkFileButton.IsEnabled = true;
+                SaveProjectButton.IsEnabled = true;
 
 
                 // Store event name lookup
@@ -1052,6 +1053,7 @@ namespace LoL_Announcer_Editor
             
             // Update SaveAsBnkWpkButton enabled state
             SaveAsBnkWpkButton.IsEnabled = IsRootNodeSelected();
+            SaveProjectButton.IsEnabled = IsRootNodeSelected();
             
             // Update AddWemFileButton enabled state - enable when an event or container is selected
             AddWemFileButton.IsEnabled = selectedNode != null && (selectedNode.NodeType == NodeType.Event || selectedNode.NodeType == NodeType.Container);
@@ -2929,6 +2931,131 @@ namespace LoL_Announcer_Editor
             {
                 WemAdditionLogger.LogException("WPK Packaging", ex);
                 System.Windows.MessageBox.Show($"Packaging failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void SaveProject_Click(object sender, RoutedEventArgs e)
+        {
+            WemAdditionLogger.LogSection("USER ACTION: Save Project Clicked");
+            try
+            {
+                if (_currentBnkSections == null || _fullFidelityBnk == null)
+                {
+                    System.Windows.MessageBox.Show("No project loaded. Please parse files first.", "No Data", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var dialog = new Microsoft.Win32.OpenFolderDialog
+                {
+                    Title = "Select Output Folder for Project"
+                };
+
+                if (dialog.ShowDialog() != true) return;
+                string outputFolder = dialog.FolderName;
+
+                string bnkName = string.IsNullOrEmpty(_currentBnkSections.SourceFileName) ? "announcer_events.bnk" : _currentBnkSections.SourceFileName + ".bnk";
+                string wpkName = string.IsNullOrEmpty(_currentBnkSections.SourceFileName) ? "announcer_audio.wpk" : _currentBnkSections.SourceFileName.Replace("_events", "_audio") + ".wpk";
+
+                string bnkOutputPath = Path.Combine(outputFolder, bnkName);
+                string wpkOutputPath = Path.Combine(outputFolder, wpkName);
+
+                WemAdditionLogger.Log($"Saving BNK to: {bnkOutputPath}");
+                WemAdditionLogger.Log($"Saving WPK to: {wpkOutputPath}");
+
+                // 1. Prepare WEM Data
+                var deletedWemIds = new HashSet<uint>();
+                var wemNodes = new List<TreeNode>();
+                var wemDataById = new Dictionary<uint, AudioData>();
+
+                if (_currentWpkWemFiles != null)
+                {
+                    foreach (var wem in _currentWpkWemFiles) wemDataById[wem.Id] = wem;
+                }
+
+                void CollectWemInfo(TreeNode node)
+                {
+                    foreach (var child in node.Children)
+                    {
+                        if (child.NodeType == NodeType.WemFile)
+                        {
+                            if (child.IsMarkedForDeletion && child.WemData != null)
+                            {
+                                deletedWemIds.Add(child.WemData.Id);
+                            }
+                            else if (child.WemData != null)
+                            {
+                                wemNodes.Add(child);
+                                if (!string.IsNullOrEmpty(child.ReplacementFileName))
+                                {
+                                    wemDataById[child.WemData.Id] = child.WemData;
+                                }
+                            }
+                        }
+                        else if (child.NodeType == NodeType.Container)
+                        {
+                            CollectWemInfo(child);
+                        }
+                    }
+                }
+
+                foreach (var eventNode in _rootNodes[0].Children) CollectWemInfo(eventNode);
+
+                var newWemFiles = new List<AudioData>();
+                foreach (var wemNode in wemNodes)
+                {
+                    if (wemNode.WemData != null && (_currentWemInformation == null || !_currentWemInformation.WemIdToSlotIndex.ContainsKey(wemNode.WemData.Id)))
+                    {
+                        newWemFiles.Add(wemNode.WemData);
+                        wemDataById[wemNode.WemData.Id] = wemNode.WemData;
+                    }
+                }
+
+                // 2. Save BNK
+                // Inject correct WEM lengths
+                foreach (var obj in _fullFidelityBnk.AllObjectsInOrder)
+                {
+                    if (obj.Type == 2 && obj.ParsedObject is Sound sound)
+                    {
+                        if (wemDataById.TryGetValue(sound.SourceId, out var audioData))
+                        {
+                            sound.InMemoryMediaSize = audioData.Length;
+                        }
+                    }
+                }
+
+                var filteredBnk = deletedWemIds.Count > 0 ? FilterDeletedWemsFromFullFidelity(_fullFidelityBnk, deletedWemIds) : _fullFidelityBnk;
+                PerformIntegrityCheck(filteredBnk);
+                bool bnkSuccess = BnkWriter.WriteBnkFile_FullFidelity(filteredBnk, bnkOutputPath);
+
+                // 3. Save WPK
+                if (_currentWemInformation != null)
+                {
+                    Utility.WriteWpkFilePreservingSlots(
+                        wemDataById,
+                        _currentWemInformation.OriginalSlotCount,
+                        _currentWemInformation.WemIdToSlotIndex,
+                        deletedWemIds,
+                        newWemFiles,
+                        wpkOutputPath,
+                        _currentWemInformation.OriginalOffsets,
+                        _currentWemInformation.SlotIndexToEntry
+                    );
+                }
+                else
+                {
+                    // Fallback to simple write if no slot info
+                    Utility.WriteWpkFile(wemDataById.Values.ToList(), wpkOutputPath);
+                }
+
+                if (bnkSuccess)
+                {
+                    System.Windows.MessageBox.Show($"Project saved successfully!\n\nBNK: {bnkName}\nWPK: {wpkName}", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                WemAdditionLogger.LogException("SaveProject_Click", ex);
+                System.Windows.MessageBox.Show($"Project save failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

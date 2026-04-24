@@ -22,11 +22,29 @@ namespace LoL_Announcer_Editor
                 using (var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
                 using (var writer = new BinaryWriter(fs))
                 {
-                    // BKHD header (24 bytes)
-                    writer.Write(Encoding.ASCII.GetBytes("BKHD"));
-                    writer.Write((uint)20);
-                    writer.Write(fullFidelity.BnkVersion);
-                    writer.Write(new byte[16]);
+                    // BKHD header
+                    if (fullFidelity.BkhdData != null && fullFidelity.BkhdData.Length > 0)
+                    {
+                        writer.Write(Encoding.ASCII.GetBytes("BKHD"));
+                        writer.Write((uint)fullFidelity.BkhdData.Length);
+                        writer.Write(fullFidelity.BkhdData);
+                    }
+                    else
+                    {
+                        // Fallback BKHD
+                        writer.Write(Encoding.ASCII.GetBytes("BKHD"));
+                        writer.Write((uint)20);
+                        writer.Write(fullFidelity.BnkVersion);
+                        writer.Write(new byte[16]);
+                    }
+
+                    // Pre-HIRC sections
+                    foreach (var section in fullFidelity.PreHircSections)
+                    {
+                        writer.Write(Encoding.ASCII.GetBytes(section.Name));
+                        writer.Write((uint)section.Data.Length);
+                        writer.Write(section.Data);
+                    }
 
                     // HIRC section
                     var objects = fullFidelity.AllObjectsInOrder;
@@ -36,14 +54,27 @@ namespace LoL_Announcer_Editor
 
                         // Pre-compute section size
                         uint hircSize = 4; // object count field
+                        var serializedObjects = new List<byte[]>();
                         foreach (var obj in objects)
-                            hircSize += (uint)SerializeObject(obj, fullFidelity.BnkVersion).Length;
+                        {
+                            var bytes = SerializeObject(obj, fullFidelity.BnkVersion);
+                            serializedObjects.Add(bytes);
+                            hircSize += (uint)bytes.Length;
+                        }
 
                         writer.Write(hircSize);
                         writer.Write((uint)objects.Count);
 
-                        foreach (var obj in objects)
-                            writer.Write(SerializeObject(obj, fullFidelity.BnkVersion));
+                        foreach (var bytes in serializedObjects)
+                            writer.Write(bytes);
+                    }
+
+                    // Post-HIRC sections
+                    foreach (var section in fullFidelity.PostHircSections)
+                    {
+                        writer.Write(Encoding.ASCII.GetBytes(section.Name));
+                        writer.Write((uint)section.Data.Length);
+                        writer.Write(section.Data);
                     }
                 }
                 return true;
