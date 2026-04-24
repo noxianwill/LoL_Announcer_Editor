@@ -87,7 +87,7 @@ namespace LoL_Announcer_Editor
             
             // Store references for event creation
             WwiseExporterLogger.Log("Extracting project references (Buses, Conversions)...");
-            ExtractReferences(actorMixerDoc, conversionDoc);
+            ExtractReferences(actorMixerDoc, projectFolder);
             
             WwiseExporterLogger.Log("Clearing existing children from Default Work Unit...");
             childrenList.RemoveAll();
@@ -156,8 +156,10 @@ namespace LoL_Announcer_Editor
 
         private void PatchConversionSettings(string projectFolder)
         {
-            string conversionWwuPath = Path.Combine(projectFolder, "Conversion Settings", "Default Work Unit.wwu");
-            if (File.Exists(conversionWwuPath))
+            string conversionDir = Path.Combine(projectFolder, "Conversion Settings");
+            if (!Directory.Exists(conversionDir)) return;
+
+            foreach (string conversionWwuPath in Directory.GetFiles(conversionDir, "*.wwu"))
             {
                 try
                 {
@@ -179,12 +181,12 @@ namespace LoL_Announcer_Editor
                     if (modified)
                     {
                         doc.Save(conversionWwuPath);
-                        WwiseExporterLogger.Log("Patched Default Conversion Settings to use Vorbis instead of PCM.");
+                        WwiseExporterLogger.Log($"Patched {Path.GetFileName(conversionWwuPath)} to use Vorbis instead of PCM.");
                     }
                 }
                 catch (Exception ex)
                 {
-                    WwiseExporterLogger.LogError($"Failed to patch Conversion Settings: {ex.Message}");
+                    WwiseExporterLogger.LogError($"Failed to patch Conversion Settings file {Path.GetFileName(conversionWwuPath)}: {ex.Message}");
                 }
             }
         }
@@ -259,15 +261,15 @@ namespace LoL_Announcer_Editor
             }
         }
 
-        private void ExtractReferences(XDocument actorMixerDoc, XDocument conversionDoc)
+        private void ExtractReferences(XDocument actorMixerDoc, string projectFolder)
         {
+            // Extract Actor-Mixer WorkUnit ID
             var workUnit = actorMixerDoc.Descendants().FirstOrDefault(e => e.Name.LocalName == "WorkUnit" && e.Attribute("Name")?.Value == "Default Work Unit");
-
             if (workUnit != null)
                 _actorMixerWorkUnitId = workUnit.Attribute("ID")?.Value ?? "";
 
+            // Extract Output Bus Reference
             var outputBusRef = actorMixerDoc.Descendants().FirstOrDefault(e => e.Name.LocalName == "Reference" && e.Attribute("Name")?.Value == "OutputBus");
-
             if (outputBusRef != null)
             {
                 var objRef = outputBusRef.Elements().FirstOrDefault(e => e.Name.LocalName == "ObjectRef");
@@ -278,22 +280,42 @@ namespace LoL_Announcer_Editor
                 }
             }
 
-            // Extract Conversion Settings ID from the conversion settings work unit
-            if (conversionDoc != null)
+            // Extract exact Conversion Settings ID and WorkUnitID from the .wproj file
+            try
             {
-                var conversionWorkUnit = conversionDoc.Descendants().FirstOrDefault(e => e.Name.LocalName == "WorkUnit");
-                if (conversionWorkUnit != null)
+                string projPath = Directory.GetFiles(projectFolder, "*.wproj").FirstOrDefault();
+                if (!string.IsNullOrEmpty(projPath))
                 {
-                    _conversionSettingsWorkUnitId = conversionWorkUnit.Attribute("ID")?.Value ?? "";
+                    var projDoc = XDocument.Load(projPath);
                     
-                    var conversionSettings = conversionDoc.Descendants()
-                        .FirstOrDefault(e => e.Name.LocalName == "Conversion" && e.Attribute("Name")?.Value == "Default Conversion Settings");
-                    
-                    if (conversionSettings != null)
+                    // Find <DefaultConversion Name="Default Conversion Settings" ID="{...}"/>
+                    var defaultConversion = projDoc.Descendants("DefaultConversion")
+                        .FirstOrDefault(e => e.Attribute("Name")?.Value == "Default Conversion Settings");
+                        
+                    if (defaultConversion != null)
                     {
-                        _conversionSettingsId = conversionSettings.Attribute("ID")?.Value ?? "";
+                        _conversionSettingsId = defaultConversion.Attribute("ID")?.Value ?? "";
+                        WwiseExporterLogger.Log($"Extracted Conversion Settings ID from .wproj: {_conversionSettingsId}");
+                    }
+
+                    // Find <WorkUnit Name="Conversion Settings" ID="{...}"/>
+                    var conversionFolder = projDoc.Descendants("PhysicalFolder")
+                        .FirstOrDefault(e => e.Attribute("Path")?.Value == "Conversion Settings");
+                        
+                    if (conversionFolder != null)
+                    {
+                        var conversionWu = conversionFolder.Element("WorkUnit");
+                        if (conversionWu != null)
+                        {
+                            _conversionSettingsWorkUnitId = conversionWu.Attribute("ID")?.Value ?? "";
+                            WwiseExporterLogger.Log($"Extracted Conversion Settings WorkUnitID from .wproj: {_conversionSettingsWorkUnitId}");
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                WwiseExporterLogger.LogError($"Failed to extract references from .wproj: {ex.Message}");
             }
         }
 
