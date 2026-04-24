@@ -20,6 +20,7 @@ namespace LoL_Announcer_Editor
         private string _masterBusWorkUnitId = "";
         private string _conversionSettingsId = "";
         private string _conversionSettingsWorkUnitId = "";
+        private string _conversionSettingsWorkUnitName = "Default Work Unit";
 
         public void Export(
             BNKSections sections,
@@ -161,12 +162,45 @@ namespace LoL_Announcer_Editor
 
             foreach (string conversionWwuPath in Directory.GetFiles(conversionDir, "*.wwu"))
             {
+                if (Path.GetFileName(conversionWwuPath) == "Factory Conversion Settings.wwu") continue;
+
                 try
                 {
                     var doc = XDocument.Load(conversionWwuPath);
-                    var pluginInfos = doc.Descendants("ConversionPluginInfo").Where(e => e.Attribute("Platform")?.Value == "Windows");
                     bool modified = false;
 
+                    // 1. Auto-Repair the WorkUnit ID and Name if it contains Default Conversion Settings
+                    var workUnit = doc.Descendants("WorkUnit").FirstOrDefault();
+                    if (workUnit != null)
+                    {
+                        var defaultConversion = doc.Descendants("Conversion").FirstOrDefault(c => c.Attribute("Name")?.Value == "Default Conversion Settings");
+                        if (defaultConversion != null && !string.IsNullOrEmpty(_conversionSettingsWorkUnitId))
+                        {
+                            // Repair WorkUnit ID
+                            if (workUnit.Attribute("ID")?.Value != _conversionSettingsWorkUnitId)
+                            {
+                                workUnit.SetAttributeValue("ID", _conversionSettingsWorkUnitId);
+                                workUnit.SetAttributeValue("Name", _conversionSettingsWorkUnitName);
+                                
+                                var rootDoc = doc.Element("WwiseDocument");
+                                if (rootDoc != null) rootDoc.SetAttributeValue("ID", _conversionSettingsWorkUnitId);
+                                
+                                modified = true;
+                                WwiseExporterLogger.Log($"Auto-repaired Conversion WorkUnit ID to {_conversionSettingsWorkUnitId}");
+                            }
+
+                            // Repair Default Conversion ID
+                            if (defaultConversion.Attribute("ID")?.Value != _conversionSettingsId && !string.IsNullOrEmpty(_conversionSettingsId))
+                            {
+                                defaultConversion.SetAttributeValue("ID", _conversionSettingsId);
+                                modified = true;
+                                WwiseExporterLogger.Log($"Auto-repaired Default Conversion ID to {_conversionSettingsId}");
+                            }
+                        }
+                    }
+
+                    // 2. Patch PCM to Vorbis
+                    var pluginInfos = doc.Descendants("ConversionPluginInfo").Where(e => e.Attribute("Platform")?.Value == "Windows");
                     foreach (var info in pluginInfos)
                     {
                         var plugin = info.Element("ConversionPlugin");
@@ -181,7 +215,19 @@ namespace LoL_Announcer_Editor
                     if (modified)
                     {
                         doc.Save(conversionWwuPath);
-                        WwiseExporterLogger.Log($"Patched {Path.GetFileName(conversionWwuPath)} to use Vorbis instead of PCM.");
+                        WwiseExporterLogger.Log($"Patched and repaired {Path.GetFileName(conversionWwuPath)}.");
+
+                        // 3. Rename the file if the wproj expects a different name (e.g. Conversion Settings.wwu instead of Default Work Unit.wwu)
+                        string expectedFileName = $"{_conversionSettingsWorkUnitName}.wwu";
+                        if (Path.GetFileName(conversionWwuPath) != expectedFileName)
+                        {
+                            string newPath = Path.Combine(conversionDir, expectedFileName);
+                            if (!File.Exists(newPath))
+                            {
+                                File.Move(conversionWwuPath, newPath);
+                                WwiseExporterLogger.Log($"Renamed {Path.GetFileName(conversionWwuPath)} to {expectedFileName} to match .wproj expectations.");
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -308,7 +354,8 @@ namespace LoL_Announcer_Editor
                         if (conversionWu != null)
                         {
                             _conversionSettingsWorkUnitId = conversionWu.Attribute("ID")?.Value ?? "";
-                            WwiseExporterLogger.Log($"Extracted Conversion Settings WorkUnitID from .wproj: {_conversionSettingsWorkUnitId}");
+                            _conversionSettingsWorkUnitName = conversionWu.Attribute("Name")?.Value ?? "Default Work Unit";
+                            WwiseExporterLogger.Log($"Extracted Conversion Settings WorkUnitID from .wproj: {_conversionSettingsWorkUnitId} (Name: {_conversionSettingsWorkUnitName})");
                         }
                     }
                 }
