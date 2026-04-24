@@ -20,7 +20,6 @@ namespace LoL_Announcer_Editor
         private string _masterBusWorkUnitId = "";
         private string _conversionSettingsId = "";
         private string _conversionSettingsWorkUnitId = "";
-        private string _conversionSettingsWorkUnitName = "Default Work Unit";
 
         public void Export(
             BNKSections sections,
@@ -162,45 +161,12 @@ namespace LoL_Announcer_Editor
 
             foreach (string conversionWwuPath in Directory.GetFiles(conversionDir, "*.wwu"))
             {
-                if (Path.GetFileName(conversionWwuPath) == "Factory Conversion Settings.wwu") continue;
-
                 try
                 {
                     var doc = XDocument.Load(conversionWwuPath);
+                    var pluginInfos = doc.Descendants("ConversionPluginInfo").Where(e => e.Attribute("Platform")?.Value == "Windows");
                     bool modified = false;
 
-                    // 1. Auto-Repair the WorkUnit ID and Name if it contains Default Conversion Settings
-                    var workUnit = doc.Descendants("WorkUnit").FirstOrDefault();
-                    if (workUnit != null)
-                    {
-                        var defaultConversion = doc.Descendants("Conversion").FirstOrDefault(c => c.Attribute("Name")?.Value == "Default Conversion Settings");
-                        if (defaultConversion != null && !string.IsNullOrEmpty(_conversionSettingsWorkUnitId))
-                        {
-                            // Repair WorkUnit ID
-                            if (workUnit.Attribute("ID")?.Value != _conversionSettingsWorkUnitId)
-                            {
-                                workUnit.SetAttributeValue("ID", _conversionSettingsWorkUnitId);
-                                workUnit.SetAttributeValue("Name", _conversionSettingsWorkUnitName);
-                                
-                                var rootDoc = doc.Element("WwiseDocument");
-                                if (rootDoc != null) rootDoc.SetAttributeValue("ID", _conversionSettingsWorkUnitId);
-                                
-                                modified = true;
-                                WwiseExporterLogger.Log($"Auto-repaired Conversion WorkUnit ID to {_conversionSettingsWorkUnitId}");
-                            }
-
-                            // Repair Default Conversion ID
-                            if (defaultConversion.Attribute("ID")?.Value != _conversionSettingsId && !string.IsNullOrEmpty(_conversionSettingsId))
-                            {
-                                defaultConversion.SetAttributeValue("ID", _conversionSettingsId);
-                                modified = true;
-                                WwiseExporterLogger.Log($"Auto-repaired Default Conversion ID to {_conversionSettingsId}");
-                            }
-                        }
-                    }
-
-                    // 2. Patch PCM to Vorbis
-                    var pluginInfos = doc.Descendants("ConversionPluginInfo").Where(e => e.Attribute("Platform")?.Value == "Windows");
                     foreach (var info in pluginInfos)
                     {
                         var plugin = info.Element("ConversionPlugin");
@@ -215,19 +181,7 @@ namespace LoL_Announcer_Editor
                     if (modified)
                     {
                         doc.Save(conversionWwuPath);
-                        WwiseExporterLogger.Log($"Patched and repaired {Path.GetFileName(conversionWwuPath)}.");
-
-                        // 3. Rename the file if the wproj expects a different name (e.g. Conversion Settings.wwu instead of Default Work Unit.wwu)
-                        string expectedFileName = $"{_conversionSettingsWorkUnitName}.wwu";
-                        if (Path.GetFileName(conversionWwuPath) != expectedFileName)
-                        {
-                            string newPath = Path.Combine(conversionDir, expectedFileName);
-                            if (!File.Exists(newPath))
-                            {
-                                File.Move(conversionWwuPath, newPath);
-                                WwiseExporterLogger.Log($"Renamed {Path.GetFileName(conversionWwuPath)} to {expectedFileName} to match .wproj expectations.");
-                            }
-                        }
+                        WwiseExporterLogger.Log($"Patched {Path.GetFileName(conversionWwuPath)} to use Vorbis instead of PCM.");
                     }
                 }
                 catch (Exception ex)
@@ -326,43 +280,33 @@ namespace LoL_Announcer_Editor
                 }
             }
 
-            // Extract exact Conversion Settings ID and WorkUnitID from the .wproj file
+            // Extract exact Conversion Settings ID and WorkUnitID from the actual .wwu file in Conversion Settings folder
             try
             {
-                string projPath = Directory.GetFiles(projectFolder, "*.wproj").FirstOrDefault();
-                if (!string.IsNullOrEmpty(projPath))
+                string conversionDir = Path.Combine(projectFolder, "Conversion Settings");
+                if (Directory.Exists(conversionDir))
                 {
-                    var projDoc = XDocument.Load(projPath);
-                    
-                    // Find <DefaultConversion Name="Default Conversion Settings" ID="{...}"/>
-                    var defaultConversion = projDoc.Descendants("DefaultConversion")
-                        .FirstOrDefault(e => e.Attribute("Name")?.Value == "Default Conversion Settings");
-                        
-                    if (defaultConversion != null)
+                    string targetWwu = Directory.GetFiles(conversionDir, "*.wwu").FirstOrDefault(f => Path.GetFileName(f) != "Factory Conversion Settings.wwu");
+                    if (!string.IsNullOrEmpty(targetWwu))
                     {
-                        _conversionSettingsId = defaultConversion.Attribute("ID")?.Value ?? "";
-                        WwiseExporterLogger.Log($"Extracted Conversion Settings ID from .wproj: {_conversionSettingsId}");
-                    }
-
-                    // Find <WorkUnit Name="Conversion Settings" ID="{...}"/>
-                    var conversionFolder = projDoc.Descendants("PhysicalFolder")
-                        .FirstOrDefault(e => e.Attribute("Path")?.Value == "Conversion Settings");
-                        
-                    if (conversionFolder != null)
-                    {
-                        var conversionWu = conversionFolder.Element("WorkUnit");
-                        if (conversionWu != null)
+                        var convDoc = XDocument.Load(targetWwu);
+                        var convWu = convDoc.Descendants("WorkUnit").FirstOrDefault();
+                        if (convWu != null)
                         {
-                            _conversionSettingsWorkUnitId = conversionWu.Attribute("ID")?.Value ?? "";
-                            _conversionSettingsWorkUnitName = conversionWu.Attribute("Name")?.Value ?? "Default Work Unit";
-                            WwiseExporterLogger.Log($"Extracted Conversion Settings WorkUnitID from .wproj: {_conversionSettingsWorkUnitId} (Name: {_conversionSettingsWorkUnitName})");
+                            _conversionSettingsWorkUnitId = convWu.Attribute("ID")?.Value ?? "";
+                            var defaultConversion = convDoc.Descendants("Conversion").FirstOrDefault(c => c.Attribute("Name")?.Value == "Default Conversion Settings");
+                            if (defaultConversion != null)
+                            {
+                                _conversionSettingsId = defaultConversion.Attribute("ID")?.Value ?? "";
+                            }
+                            WwiseExporterLogger.Log($"Extracted Conversion Settings ID from wwu: {_conversionSettingsId} (WorkUnit: {_conversionSettingsWorkUnitId})");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                WwiseExporterLogger.LogError($"Failed to extract references from .wproj: {ex.Message}");
+                WwiseExporterLogger.LogError($"Failed to extract references from conversion .wwu: {ex.Message}");
             }
         }
 
@@ -646,6 +590,21 @@ namespace LoL_Announcer_Editor
                 soundEl.SetAttributeValue("ShortID", soundShortId);
             }
 
+            // Update Conversion Reference WorkUnitID to match the current valid WorkUnitID
+            var convRef = soundEl.Descendants("Reference").FirstOrDefault(r => r.Attribute("Name")?.Value == "Conversion");
+            if (convRef != null)
+            {
+                var objRef = convRef.Element("ObjectRef");
+                if (objRef != null && !string.IsNullOrEmpty(_conversionSettingsWorkUnitId))
+                {
+                    objRef.SetAttributeValue("WorkUnitID", _conversionSettingsWorkUnitId);
+                    if (!string.IsNullOrEmpty(_conversionSettingsId))
+                    {
+                        objRef.SetAttributeValue("ID", _conversionSettingsId);
+                    }
+                }
+            }
+
             // Find AudioFile element
             var audioFileEl = soundEl.Descendants().FirstOrDefault(e => e.Name.LocalName == "AudioFile");
             if (audioFileEl == null) return soundEl;
@@ -791,30 +750,11 @@ namespace LoL_Announcer_Editor
 
         private XElement CreateConversionReference()
         {
-            var reference = new XElement("Reference",
-                new XAttribute("Name", "Conversion"));
-
-            if (!string.IsNullOrEmpty(_conversionSettingsId))
-            {
-                var objRef = new XElement("ObjectRef",
+            return new XElement("Reference", new XAttribute("Name", "Conversion"),
+                new XElement("ObjectRef",
                     new XAttribute("Name", "Default Conversion Settings"),
-                    new XAttribute("ID", _conversionSettingsId));
-
-                if (!string.IsNullOrEmpty(_conversionSettingsWorkUnitId))
-                    objRef.Add(new XAttribute("WorkUnitID", _conversionSettingsWorkUnitId));
-
-                reference.Add(objRef);
-            }
-            else
-            {
-                // Fallback to a standard Default Conversion Settings ID if detection failed
-                reference.Add(new XElement("ObjectRef",
-                    new XAttribute("Name", "Default Conversion Settings"),
-                    new XAttribute("ID", "{6D1B890C-9826-4384-BF07-C15223E9FB56}"),
-                    new XAttribute("WorkUnitID", "{074B1442-E293-4C13-ACAD-9B61AC71E7A5}")));
-            }
-
-            return reference;
+                    new XAttribute("ID", string.IsNullOrEmpty(_conversionSettingsId) ? "{6D1B890C-9826-4384-BF07-C15223E9FB56}" : _conversionSettingsId),
+                    new XAttribute("WorkUnitID", string.IsNullOrEmpty(_conversionSettingsWorkUnitId) ? "{074B1442-E293-4C13-ACAD-9B61AC71E7A5}" : _conversionSettingsWorkUnitId)));
         }
 
         private void ApplyNodeProperties(XElement element, NodeBaseParams nbp)
