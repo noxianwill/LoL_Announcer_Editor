@@ -283,6 +283,7 @@ namespace LoL_Announcer_Editor
 
                 // BNK sections - populated by ParseEventBnkFile_FullFidelity (single pass, no double-fill).
                 var sections = new BNKSections();
+                sections.SourceFileName = Path.GetFileNameWithoutExtension(bnkPath);
 
                 // Store BNK structure in memory for WEM addition feature
                 _currentBnkSections = sections;

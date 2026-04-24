@@ -7,6 +7,8 @@ namespace LoL_Announcer_Editor
     public class BNKSections
     {
         public uint BnkVersion { get; set; }
+        /// <summary>BNK filename without extension, e.g. "announcer_global_female1_vo_events"</summary>
+        public string SourceFileName { get; set; } = "";
         public List<Settings> Settings { get; set; } = new List<Settings>();
         public List<Sound> Sounds { get; set; } = new List<Sound>();
         public List<EventAction> EventActions { get; set; } = new List<EventAction>();

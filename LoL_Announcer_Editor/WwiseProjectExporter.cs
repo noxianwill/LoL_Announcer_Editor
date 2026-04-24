@@ -139,7 +139,10 @@ namespace LoL_Announcer_Editor
             }
 
             string eventsWuId = eventsDoc.Descendants("WorkUnit").FirstOrDefault()?.Attribute("ID")?.Value ?? "{00000000-0000-0000-0000-000000000000}";
-            ModifySoundBanksWorkUnit(sbDoc, eventsWuId, events);
+            string bankName = string.IsNullOrWhiteSpace(sections.SourceFileName)
+                ? "announcer_global_female1_vo_events"
+                : sections.SourceFileName;
+            ModifySoundBanksWorkUnit(sbDoc, eventsWuId, events, bankName);
             sbDoc.Save(soundBanksWwuPath);
 
             // Patch conversion settings to Vorbis
@@ -1058,7 +1061,7 @@ namespace LoL_Announcer_Editor
 
 
 
-        private void ModifySoundBanksWorkUnit(XDocument doc, string eventsWorkUnitId, List<XElement> events)
+        private void ModifySoundBanksWorkUnit(XDocument doc, string eventsWorkUnitId, List<XElement> events, string bankName)
         {
             var workUnit = doc.Descendants("WorkUnit")
                 .FirstOrDefault(wu => wu.Attribute("Name")?.Value == "Default Work Unit");
@@ -1073,7 +1076,6 @@ namespace LoL_Announcer_Editor
             }
 
             // Check if the soundbank already exists
-            string bankName = "announcer_global_female1_vo_events";
             var existingBank = childrenList.Elements("SoundBank").FirstOrDefault(sb => sb.Attribute("Name")?.Value == bankName);
             if (existingBank != null)
             {
@@ -1081,10 +1083,9 @@ namespace LoL_Announcer_Editor
             }
 
             string bankGuid = GenerateGuid();
-            // SoundBank ShortID: Wwise uses FNV32 hash of the bank name.
-            // Hash of "announcer_global_female1_vo_events" = 2707607260
-            // Using this exact value ensures compatibility with the game engine.
-            string bankShortId = "2707607260";
+            // SoundBank ShortID: Wwise uses FNV32 hash of the bank name (computed dynamically).
+            string bankShortId = ComputeFnv32Hash(bankName).ToString();
+            WwiseExporterLogger.Log($"SoundBank name: '{bankName}', FNV32 ShortID: {bankShortId}");
 
             var inclusionList = new XElement("ObjectInclusionList");
             foreach (var evt in events)
@@ -1118,6 +1119,21 @@ namespace LoL_Announcer_Editor
         private string GenerateGuid()
         {
             return Guid.NewGuid().ToString("B").ToUpper();
+        }
+
+        /// <summary>
+        /// Computes the FNV-1 32-bit hash Wwise uses for SoundBank ShortIDs.
+        /// Algorithm: offset=2166136261, prime=16777619, lowercase input.
+        /// </summary>
+        private static uint ComputeFnv32Hash(string name)
+        {
+            uint hash = 2166136261u;
+            foreach (char c in name.ToLowerInvariant())
+            {
+                hash *= 16777619u;
+                hash ^= (byte)c;
+            }
+            return hash;
         }
 
         private static readonly Random _random = new Random();
