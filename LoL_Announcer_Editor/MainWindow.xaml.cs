@@ -2897,5 +2897,39 @@ namespace LoL_Announcer_Editor
             }
         }
 
+        private void PackageWemsToWpk_Click(object sender, RoutedEventArgs e)
+        {
+            var folderDialog = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "Select Folder containing .wem files"
+            };
+
+            if (folderDialog.ShowDialog() != true) return;
+
+            string inputFolder = folderDialog.FolderName;
+
+            var saveDialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save WPK File",
+                Filter = "WPK files (*.wpk)|*.wpk|All files (*.*)|*.*",
+                FileName = System.IO.Path.GetFileName(inputFolder) + ".wpk"
+            };
+
+            if (saveDialog.ShowDialog() != true) return;
+
+            string outputPath = saveDialog.FileName;
+
+            try
+            {
+                // WemAdditionLogger.Clear();
+                WpkPackager.PackageWems(inputFolder, outputPath);
+                System.Windows.MessageBox.Show("WPK Packaging Complete!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                WemAdditionLogger.LogException("WPK Packaging", ex);
+                System.Windows.MessageBox.Show($"Packaging failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
     }
 }

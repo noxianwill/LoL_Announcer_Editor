@@ -89,6 +89,7 @@
             <Button Content="Replace wem data" HorizontalAlignment="Left" Margin="948,410,0,0" VerticalAlignment="Top" Height="32" Width="216" Click="ReplaceWemData_Click"/>
             <Button Content="Play audio" HorizontalAlignment="Left" Margin="948,447,0,0" VerticalAlignment="Top" Height="32" Width="216" Click="PlaySoundButton_Click"/>
             <Button Content="Stop all playing sounds" HorizontalAlignment="Left" Margin="948,484,0,0" VerticalAlignment="Top" Height="32" Width="216" Click="StopAllSoundsButton_Click"/>
+            <Button Content="Package WEMs to WPK" HorizontalAlignment="Left" Margin="948,521,0,0" VerticalAlignment="Top" Height="32" Width="216" Click="PackageWemsToWpk_Click"/>
         </Grid>
     </DockPanel>
 </Window>
