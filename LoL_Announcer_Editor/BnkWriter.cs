@@ -91,7 +91,11 @@ namespace LoL_Announcer_Editor
         // ──────────────────────────────────────────────────────────────────────
         private static byte[] SerializeObject(BnkObjectRecord obj, uint bnkVersion)
         {
-            // Unknown type — emit original bytes unchanged
+            // If the object hasn't changed, always prefer the original raw data for 100% fidelity.
+            if (!obj.IsChanged && obj.RawData != null && obj.RawData.Length > 0)
+                return obj.RawData;
+
+            // If we have no parsed object and no raw data, return empty.
             if (obj.ParsedObject == null)
                 return obj.RawData ?? Array.Empty<byte>();
 
@@ -146,10 +150,12 @@ namespace LoL_Announcer_Editor
                             inner.Write(rc.TransitionTime);
                             inner.Write(rc.TransitionTimeModMin);
                             inner.Write(rc.TransitionTimeModMax);
-                            inner.Write(rc.TransitionMode);
                             inner.Write(rc.AvoidRepeatCount);
+                            inner.Write(rc.TransitionMode);
                             inner.Write(rc.RandomMode);
-                            inner.Write(rc.SoundIdAmount);
+                            inner.Write(rc.Mode);
+                            inner.Write(rc.byBitVector);
+                            inner.Write((uint)rc.SoundIds.Count);
                             foreach (var id in rc.SoundIds) inner.Write(id);
                             inner.Write((ushort)rc.Playlist.Count);
                             foreach (var e in rc.Playlist)

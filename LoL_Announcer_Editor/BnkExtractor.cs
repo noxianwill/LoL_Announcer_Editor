@@ -124,7 +124,7 @@ namespace LoL_Announcer_Editor
                                     Array.Copy(BitConverter.GetBytes(len), 0, fullObj, 1, 4);
                                     Array.Copy(objPayload, 0, fullObj, 5, len);
 
-                                    var record = new BnkObjectRecord { Type = type, Length = len, RawData = null };
+                                    var record = new BnkObjectRecord { Type = type, Length = len, RawData = fullObj };
                                     using (var objMs = new MemoryStream(objPayload))
                                     using (var objReader = new BinaryReader(objMs))
                                     {

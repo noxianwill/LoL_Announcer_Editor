@@ -199,8 +199,7 @@ namespace LoL_Announcer_Editor
             writer.Write(p.OverrideAttachmentParams);
             writer.Write(p.OutputBusId);
             writer.Write(p.DirectParentId);
-            writer.Write(p.OverrideParentPriority);
-            writer.Write(p.OffsetPriority);
+            writer.Write(p.OverrideParentPriority); // Only 1 byte in 145+
 
             // Props (float)
             writer.Write((byte)p.Props.Count);
@@ -235,6 +234,10 @@ namespace LoL_Announcer_Editor
                 writer.Write(p.AuxBus1);
                 writer.Write(p.AuxBus2);
                 writer.Write(p.AuxBus3);
+            }
+            else if ((p.AuxBits & 0x04) != 0)
+            {
+                writer.Write(p.AuxBus0);
             }
 
             // Virtual voice / HDR
