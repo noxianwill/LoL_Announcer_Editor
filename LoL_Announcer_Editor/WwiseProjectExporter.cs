@@ -139,9 +139,13 @@ namespace LoL_Announcer_Editor
             }
 
             string eventsWuId = eventsDoc.Descendants("WorkUnit").FirstOrDefault()?.Attribute("ID")?.Value ?? "{00000000-0000-0000-0000-000000000000}";
-            string bankName = string.IsNullOrWhiteSpace(sections.SourceFileName)
-                ? "announcer_global_female1_vo_events"
-                : sections.SourceFileName;
+            
+            if (string.IsNullOrWhiteSpace(sections.SourceFileName))
+            {
+                throw new InvalidOperationException("BNK SourceFileName is missing. Cannot determine SoundBank name.");
+            }
+            
+            string bankName = sections.SourceFileName;
             ModifySoundBanksWorkUnit(sbDoc, eventsWuId, events, bankName);
             sbDoc.Save(soundBanksWwuPath);
 
