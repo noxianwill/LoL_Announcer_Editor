@@ -363,3 +363,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# LoL Announcer Editor specifics
+temp/
+extracted_wems/
+wav_cache/
+settings.json
+app.log
