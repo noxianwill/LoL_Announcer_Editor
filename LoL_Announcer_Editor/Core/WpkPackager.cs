@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Utils;
+
+namespace LoL_Announcer_Editor.Core
 {
     /// <summary>
     /// Professional WPK packager mirroring Riot's internal format.
@@ -16,6 +18,12 @@ namespace LoL_Announcer_Editor
         private const uint WPK_VERSION = 1;
         private const int ALIGNMENT = 8; // Riot usually uses 8 or 16 byte alignment
 
+        /// <summary>
+        /// Packages all .wem files from the input folder into a Riot-compliant .wpk file.
+        /// Files are sorted numerically by their ID.
+        /// </summary>
+        /// <param name="inputFolder">Directory containing .wem files named with their numeric IDs.</param>
+        /// <param name="outputPath">The target .wpk file path.</param>
         public static void PackageWems(string inputFolder, string outputPath)
         {
             Logger.LogSection("WPK PACKAGING START");

@@ -1,8 +1,12 @@
 using System.Diagnostics;
 using System.Windows;
 
-namespace LoL_Announcer_Editor
+namespace LoL_Announcer_Editor.UI.Windows
 {
+    /// <summary>
+    /// Interaction logic for CreditsWindow.xaml.
+    /// Displays author information and project links.
+    /// </summary>
     public partial class CreditsWindow : Window
     {
         public CreditsWindow()

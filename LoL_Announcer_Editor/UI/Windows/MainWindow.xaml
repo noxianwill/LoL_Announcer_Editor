@@ -1,9 +1,11 @@
-<Window x:Class="LoL_Announcer_Editor.MainWindow"
+<Window x:Class="LoL_Announcer_Editor.UI.Windows.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:LoL_Announcer_Editor"
+        xmlns:local="clr-namespace:LoL_Announcer_Editor.UI.Windows"
+        xmlns:converters="clr-namespace:LoL_Announcer_Editor.UI.Converters"
+        xmlns:models="clr-namespace:LoL_Announcer_Editor.Models"
         mc:Ignorable="d"
         WindowStartupLocation="CenterScreen"
         FontSize="15"
@@ -12,10 +14,10 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        <local:StringVisibilityConverter x:Key="StringToVis"/>
-        <local:WemNameConverter x:Key="WemNameConverter"/>
-        <local:WemArrowConverter x:Key="ReplacementFileNameToArrowRun"/>
-        <local:NodeTypeToIconConverter x:Key="NodeTypeToIconConverter"/>
+        <converters:StringVisibilityConverter x:Key="StringToVis"/>
+        <converters:WemNameConverter x:Key="WemNameConverter"/>
+        <converters:WemArrowConverter x:Key="ReplacementFileNameToArrowRun"/>
+        <converters:NodeTypeToIconConverter x:Key="NodeTypeToIconConverter"/>
     </Window.Resources>
 
     <DockPanel>
@@ -80,8 +82,12 @@
                     <ColumnDefinition Width="300"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- TreeView -->
-                <TreeView x:Name="TreeView" Grid.Column="0" Margin="0,0,15,0" SelectedItemChanged="TreeView_SelectedItemChanged">
+                <!-- TreeView with Virtualization Enabled for performance with large datasets -->
+                <TreeView x:Name="TreeView" Grid.Column="0" Margin="0,0,15,0" 
+                          SelectedItemChanged="TreeView_SelectedItemChanged"
+                          VirtualizingStackPanel.IsVirtualizing="True"
+                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                          ScrollViewer.CanContentScroll="True">
                     <TreeView.ContextMenu>
                         <ContextMenu>
                             <MenuItem Header="Expand Selected Branch" Click="ExpandSelected_Click"/>

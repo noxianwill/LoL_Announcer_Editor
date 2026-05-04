@@ -2,12 +2,13 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Models;
+
+namespace LoL_Announcer_Editor.Utils
 {
     /// <summary>
     /// Low-level binary helpers for reading and writing Wwise NodeBaseParams.
     /// All field names follow the Wwise SDK / wwiser conventions.
-    /// RTPC layout per wwiser: ControlId(4) ParamId(1) CurveId(4) Scaling(1) PointCount(2) Points[]
     /// </summary>
     public static class BnkBinaryHelpers
     {

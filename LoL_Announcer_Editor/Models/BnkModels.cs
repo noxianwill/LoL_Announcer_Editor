@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-namespace LoL_Announcer_Editor
+namespace LoL_Announcer_Editor.Models
 {
+    /// <summary>
+    /// Represents all logical sections extracted from a Wwise BNK file.
+    /// </summary>
     public class BNKSections
     {
         public uint BnkVersion { get; set; }
@@ -49,12 +52,18 @@ namespace LoL_Announcer_Editor
         public bool IsChanged { get; set; }
     }
 
+    /// <summary>
+    /// Represents a generic section within a BNK file (e.g. BKHD, DATA, HIRC).
+    /// </summary>
     public class BnkSection
     {
         public string Name { get; set; } = "";
         public byte[] Data { get; set; } = Array.Empty<byte>();
     }
 
+    /// <summary>
+    /// Represents a full-fidelity BNK structure used for accurate reconstruction.
+    /// </summary>
     public class BnkFullFidelity
     {
         public uint BnkVersion { get; set; }

@@ -3,16 +3,14 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
-namespace LoL_Announcer_Editor
-{
-    public enum AppTheme
-    {
-        Windows11,
-        Windows10,
-        Hextech,
-        Light
-    }
+using LoL_Announcer_Editor.Models;
 
+namespace LoL_Announcer_Editor.Services
+{
+    /// <summary>
+    /// Service for managing application themes and accent colors.
+    /// Handles runtime resource dictionary switching.
+    /// </summary>
     public static class ThemeManager
     {
         private static ResourceDictionary? _currentThemeDictionary;

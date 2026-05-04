@@ -1,24 +1,24 @@
-using Microsoft.Win32;
-using System.Text;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Input;
+using System;
+using System.Diagnostics;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
 using NAudio.Wave;
-using System.IO;
-using System.Windows.Forms;
-using System.ComponentModel;
-using System.Collections.ObjectModel;
-using System.Diagnostics;
+using LoL_Announcer_Editor.Core;
+using LoL_Announcer_Editor.Models;
+using LoL_Announcer_Editor.Services;
+using LoL_Announcer_Editor.Utils;
 
-namespace LoL_Announcer_Editor
+namespace LoL_Announcer_Editor.UI.Windows
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Interaction logic for MainWindow.xaml.
+    /// Acts as the main orchestration layer for the application.
     /// </summary>
     public partial class MainWindow : Window
     {
@@ -208,314 +208,158 @@ namespace LoL_Announcer_Editor
 
         private async void ParseFilesButton_Click(object sender, RoutedEventArgs e)
         {
-            // Logger.Clear();
             Logger.LogSection("STARTING NEW SESSION - PARSING FILES");
+            
+            string binPath = BinFilePath.Text;
+            string wpkPath = WpkFilePath.Text;
+            string bnkPath = BnkFilePath.Text;
+
+            // Validate file paths
+            if (!File.Exists(binPath) || !File.Exists(wpkPath) || !File.Exists(bnkPath))
+            {
+                System.Windows.MessageBox.Show("Please select valid BIN, WPK, and BNK files.", "Invalid Files", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Show progress and disable UI
+            ExtractionProgressBar.Visibility = Visibility.Visible;
+            ExtractionProgressBar.IsIndeterminate = true;
+            ProgressText.Visibility = Visibility.Visible;
+            ProgressText.Text = "Parsing files and building tree...";
+            ParseFilesButton.IsEnabled = false;
+
             try
             {
-                string binPath = BinFilePath.Text;
-                string wpkPath = WpkFilePath.Text;
-                string bnkPath = BnkFilePath.Text;
-
                 Logger.LogPaths(binPath, wpkPath, bnkPath);
 
-
-
-
-
-                // Validate file paths
-                if (string.IsNullOrEmpty(binPath) || !System.IO.File.Exists(binPath))
+                // Offload heavy processing to background thread
+                var result = await Task.Run(() =>
                 {
+                    // 1. Load BNK bytes
+                    Logger.LogBnkLoadStart(bnkPath);
+                    byte[] originalBnkBytes = File.ReadAllBytes(bnkPath);
+                    Logger.LogBnkLoaded(originalBnkBytes.Length);
 
-                    System.Windows.MessageBox.Show("Please select a valid BIN file.", "Invalid File", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                if (string.IsNullOrEmpty(wpkPath) || !System.IO.File.Exists(wpkPath))
-                {
-
-                    System.Windows.MessageBox.Show("Please select a valid WPK file.", "Invalid File", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                if (string.IsNullOrEmpty(bnkPath) || !System.IO.File.Exists(bnkPath))
-                {
-
-                    System.Windows.MessageBox.Show("Please select a valid BNK file.", "Invalid File", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                Logger.LogBnkLoadStart(bnkPath);
-                try
-                {
-                    _originalBnkBytes = File.ReadAllBytes(bnkPath);
-                    Logger.LogBnkLoaded(_originalBnkBytes.Length);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogException("Loading original BNK bytes", ex);
-                    Logger.LogBnkLoadError(ex.Message);
-                    return;
-                }
-
-                // Parse BIN for event name mapping
-                Logger.LogBinParseStart();
-                var stringHashes = BinParser.ParseBinFile(binPath);
-                var eventNameLookup = new Dictionary<uint, string>();
-                if (stringHashes != null)
-                {
-                    foreach (var sh in stringHashes)
+                    // 2. Parse BIN for event name mapping
+                    Logger.LogBinParseStart();
+                    var stringHashes = BinParser.ParseBinFile(binPath);
+                    var eventNameLookup = new Dictionary<uint, string>();
+                    if (stringHashes != null)
                     {
-                        eventNameLookup[sh.Hash] = sh.String;
+                        foreach (var sh in stringHashes) eventNameLookup[sh.Hash] = sh.String;
+                        Logger.LogBinParsed(stringHashes.Count);
                     }
-                    Logger.LogBinParsed(stringHashes.Count);
-                }
-                else
-                {
-                    Logger.LogError("BIN parsing returned null");
-                }
 
-                // BNK sections - populated by ParseEventBnkFile_FullFidelity (single pass, no double-fill).
-                var sections = new BNKSections();
-                sections.SourceFileName = Path.GetFileNameWithoutExtension(bnkPath);
-
-                // Store BNK structure in memory for WEM addition feature
-                _currentBnkSections = sections;
-                _currentBnkPath = bnkPath;
-                _currentWpkPath = wpkPath;
-
-                // Initialize full-fidelity BNK structure
-                Logger.LogBnkParseStart();
-                _fullFidelityBnk = new BnkFullFidelity();
-                bool fullFidelityOk = BnkExtractor.ParseEventBnkFile_FullFidelity(bnkPath, _fullFidelityBnk, sections);
-                if (!fullFidelityOk)
-                {
-                    Logger.LogError("Failed to parse BNK file in Full Fidelity mode");
-                }
-                else
-                {
-                    Logger.LogBnkParsed(_fullFidelityBnk.AllObjectsInOrder.Count);
-
-                }
-
-                // Build a set of BNK event IDs
-                var bnkEventIds = new HashSet<uint>(sections.Events.Select(e => e.SelfId));
-
-
-                // Parse WPK with stringHashes and bnkEventIds
-
-                var wemInfo = WpkExtractor.ParseWpkFile(wpkPath, stringHashes ?? new List<StringHash>(), bnkEventIds);
-                _currentWemInformation = wemInfo;
-                
-                // If parsing is successful, enable operations
-                UpdateControlStates(isParsed: true);
-#pragma warning disable CS8602 // Dereference of a possibly null reference
-
-#pragma warning restore CS8602
-
-
-                
-                // Store WPK WEM files and slot information in memory for WEM addition feature
-                _currentWpkWemFiles = wemInfo.SortedWemDataList;
-                _currentWemInformation = wemInfo;  // Store full WemInformation for slot preservation
-
-                // Pre-build dictionaries for O(1) lookups
-                var eventActionMap = sections.EventActions.ToDictionary(ea => ea.SelfId);
-                var wemMap = wemInfo.SortedWemDataList.ToDictionary(w => w.Id);
-                var randomContainerMap = sections.RandomContainers.ToDictionary(r => r.SelfId);
-                var switchContainerMap = sections.SwitchContainers.ToDictionary(s => s.SelfId);
-
-                // Build tree structure: root node is WPK file, children are events, grandchildren are WEM files
-                var root = new TreeNode { Name = System.IO.Path.GetFileName(wpkPath), NodeType = NodeType.Root, ShowCheckbox = true };
-
-                // Build the tree in the BNK event loop (as before)
-
-                foreach (var bnkEvent in sections.Events)
-                {
-                    string eventName = eventNameLookup.TryGetValue(bnkEvent.SelfId, out var name) ? name : $"Event_{bnkEvent.SelfId}";
-                    var eventNode = new TreeNode { Name = eventName, NodeType = NodeType.Event, ShowCheckbox = true };
-
-
-
-                    foreach (var eventId in bnkEvent.EventIds)
+                    // 3. Initialize BNK structures
+                    var sections = new BNKSections { SourceFileName = Path.GetFileNameWithoutExtension(bnkPath) };
+                    var fullFidelityBnk = new BnkFullFidelity();
+                    
+                    Logger.LogBnkParseStart();
+                    if (!BnkExtractor.ParseEventBnkFile_FullFidelity(bnkPath, fullFidelityBnk, sections))
                     {
-                        if (!eventActionMap.TryGetValue(eventId, out var eventAction))
+                        throw new Exception("Failed to parse BNK file in Full Fidelity mode");
+                    }
+                    Logger.LogBnkParsed(fullFidelityBnk.AllObjectsInOrder.Count);
+
+                    // 4. Parse WPK
+                    var bnkEventIds = new HashSet<uint>(sections.Events.Select(ev => ev.SelfId));
+                    var wemInfo = WpkExtractor.ParseWpkFile(wpkPath, stringHashes ?? new List<StringHash>(), bnkEventIds);
+                    if (wemInfo == null) throw new Exception("Failed to parse WPK file");
+
+                    // 5. Build Tree Structure (Virtual)
+                    var root = new TreeNode { Name = Path.GetFileName(wpkPath), NodeType = NodeType.Root, ShowCheckbox = true };
+                    var eventActionMap = sections.EventActions.ToDictionary(ea => ea.SelfId);
+                    var wemMap = wemInfo.SortedWemDataList.ToDictionary(w => w.Id);
+                    var randomContainerMap = sections.RandomContainers.ToDictionary(r => r.SelfId);
+                    var switchContainerMap = sections.SwitchContainers.ToDictionary(s => s.SelfId);
+
+                    foreach (var bnkEvent in sections.Events)
+                    {
+                        string eventName = eventNameLookup.TryGetValue(bnkEvent.SelfId, out var name) ? name : $"Event_{bnkEvent.SelfId}";
+                        var eventNode = new TreeNode { Name = eventName, NodeType = NodeType.Event, ShowCheckbox = true, Parent = root };
+
+                        foreach (var actionId in bnkEvent.EventIds)
                         {
-                            continue;
-                        }
+                            if (!eventActionMap.TryGetValue(actionId, out var eventAction)) continue;
 
-                        // Check if the SoundObjectId is a container (RandomContainer, SwitchContainer, etc.)
-                        randomContainerMap.TryGetValue(eventAction.SoundObjectId, out var randomContainer);
-                        switchContainerMap.TryGetValue(eventAction.SoundObjectId, out var switchContainer);
+                            uint targetId = eventAction.SoundObjectId;
+                            TreeNode parentForWems = eventNode;
 
-                        TreeNode parentForWems = eventNode; // Default: add WEMs directly to event
-
-                        // If there's a container, create a container node
-                        if (randomContainer != null || switchContainer != null)
-                        {
-                            uint containerId = randomContainer?.SelfId ?? switchContainer.SelfId;
-                            var containerNode = new TreeNode
+                            // Handle containers
+                            if (randomContainerMap.ContainsKey(targetId) || switchContainerMap.ContainsKey(targetId))
                             {
-                                Name = $"{containerId}",
-                                NodeType = NodeType.Container,
-                                ShowCheckbox = true
-                            };
-                            containerNode.Parent = eventNode;
-                            eventNode.Children.Add(containerNode);
-                            parentForWems = containerNode; // Add WEMs to container instead
-
-                        }
-
-                        // Now add the WEM files
-                        Logger.LogEventResolve(bnkEvent.SelfId, eventId, eventAction.SoundObjectId);
-                        var fileIds = ResolveObjectToFileIds(eventAction.SoundObjectId, sections);
-                        Logger.LogEventWemsResolved(bnkEvent.SelfId, fileIds.Count);
-                        foreach (var fileId in fileIds)
-                        {
-                            if (!wemMap.TryGetValue(fileId, out var wemFile))
-                            {
-                                continue;
+                                var containerNode = new TreeNode { Name = $"{targetId}", NodeType = NodeType.Container, ShowCheckbox = true, Parent = eventNode };
+                                eventNode.Children.Add(containerNode);
+                                parentForWems = containerNode;
                             }
 
-                            var wemNode = new TreeNode
+                            // Resolve WEMs
+                            var fileIds = ResolveObjectToFileIds(targetId, sections);
+                            foreach (var fileId in fileIds)
                             {
-                                Name = $"{fileId}",
-                                WemData = wemFile, // Use reference instead of copy
-                                NodeType = NodeType.WemFile,
-                                ShowCheckbox = true
-                            };
-                            wemNode.Parent = parentForWems; // Set parent (either event or container)
-                            parentForWems.Children.Add(wemNode);
-                        }
-                    }
-                    // Always add the event node to the root, even if it has zero WEM children
-                    eventNode.Parent = root; // Set parent before adding to children
-                    root.Children.Add(eventNode);
-                }
-
-                // Sort event nodes in the treeview according to the order in the bin file
-                var eventOrder = stringHashes?.Select(sh => sh.String).ToList() ?? new List<string>();
-                root.Children = new ObservableCollection<TreeNode>(
-                    root.Children
-                        .OrderBy(node => {
-                            int idx = eventOrder.IndexOf(node.Name);
-                            return idx == -1 ? int.MaxValue : idx;
-                        })
-                );
-
-                // Use ObservableCollection for root nodes
-                _rootNodes.Clear();
-                // Add an 'Unreferenced WEMs' group for any WPK files not mapped from BNK
-                var referencedIds = new HashSet<uint>();
-                foreach (var evt in root.Children)
-                {
-                    foreach (var child in evt.Children)
-                    {
-                        if (child.NodeType == NodeType.WemFile && child.WemData != null)
-                        {
-                            referencedIds.Add(child.WemData.Id);
-                        }
-                        else if (child.NodeType == NodeType.Container)
-                        {
-                            foreach (var gc in child.Children)
-                            {
-                                if (gc.NodeType == NodeType.WemFile && gc.WemData != null)
-                                    referencedIds.Add(gc.WemData.Id);
+                                if (wemMap.TryGetValue(fileId, out var wemFile))
+                                {
+                                    var wemNode = new TreeNode { Name = $"{fileId}", WemData = wemFile, NodeType = NodeType.WemFile, ShowCheckbox = true, Parent = parentForWems };
+                                    parentForWems.Children.Add(wemNode);
+                                }
                             }
                         }
+                        root.Children.Add(eventNode);
                     }
-                }
-                var unref = new TreeNode { Name = "Unreferenced WEMs", NodeType = NodeType.Root, ShowCheckbox = true };
-                if (wemInfo?.SortedWemDataList != null)
-                {
+
+                    // Sort events
+                    var eventOrder = stringHashes?.Select(sh => sh.String).ToList() ?? new List<string>();
+                    var sortedChildren = root.Children.OrderBy(n => {
+                        int idx = eventOrder.IndexOf(n.Name);
+                        return idx == -1 ? int.MaxValue : idx;
+                    }).ToList();
+                    root.Children = new ObservableCollection<TreeNode>(sortedChildren);
+
+                    // Add Unreferenced
+                    var referencedIds = new HashSet<uint>(root.Children.SelectMany(e => e.Children).SelectMany(c => c.NodeType == NodeType.WemFile ? new[] { c.WemData?.Id ?? 0 } : c.Children.Select(gc => gc.WemData?.Id ?? 0)).Where(id => id != 0));
+                    var unref = new TreeNode { Name = "Unreferenced WEMs", NodeType = NodeType.Root, ShowCheckbox = true, Parent = root };
                     foreach (var ad in wemInfo.SortedWemDataList)
                     {
                         if (!referencedIds.Contains(ad.Id))
                         {
-                            var node = new TreeNode { Name = $"{ad.Id}", NodeType = NodeType.WemFile, ShowCheckbox = true, WemData = new AudioData{ Id=ad.Id, Length=ad.Length, Data=ad.Data.ToArray() } };
-                            node.Parent = unref;
-                            unref.Children.Add(node);
+                            unref.Children.Add(new TreeNode { Name = $"{ad.Id}", NodeType = NodeType.WemFile, ShowCheckbox = true, WemData = ad, Parent = unref });
                         }
                     }
-                }
-                if (unref.Children.Count > 0)
-                {
-                    unref.Parent = root;
-                    root.Children.Add(unref);
+                    if (unref.Children.Count > 0) root.Children.Add(unref);
 
-                }
-                _rootNodes.Add(root);
-                root.IsExpanded = true; // Only expand the root node for better performance
+                    return new { OriginalBytes = originalBnkBytes, Sections = sections, FullFid = fullFidelityBnk, WemInfo = wemInfo, EventLookup = eventNameLookup, RootNode = root };
+                });
+
+                // Update UI on UI thread
+                _originalBnkBytes = result.OriginalBytes;
+                _currentBnkSections = result.Sections;
+                _fullFidelityBnk = result.FullFid;
+                _currentWemInformation = result.WemInfo;
+                _currentWpkWemFiles = result.WemInfo.SortedWemDataList;
+                _eventNameLookup = result.EventLookup;
+                _currentBnkPath = bnkPath;
+                _currentWpkPath = wpkPath;
+
+                _rootNodes.Clear();
+                _rootNodes.Add(result.RootNode);
+                result.RootNode.IsExpanded = true;
                 TreeView.ItemsSource = _rootNodes;
 
-                // Log events in the order of the bin file
-                if (stringHashes != null)
-                {
-                    foreach (var sh in stringHashes)
-                    {
-                        var bnkEvent = sections.Events.FirstOrDefault(e => e.SelfId == sh.Hash);
-                        if (bnkEvent == null)
-                            continue;
-                        string eventName = sh.String;
-                        var eventNode = root.Children.FirstOrDefault(n => n.Name == eventName);
-                        if (eventNode == null)
-                            continue;
-                        // Separator for readability
-
-                        // Log all event parameters
-
-
-
-
-
-
-                        foreach (var wemNode in eventNode.Children)
-                        {
-                            var wem = wemNode.WemData;
-                            if (wem != null)
-                            {
-
-
-
-                            }
-                        }
-                    }
-                }
-
-                // Log totals at the end
-
-
-
-
-                // Count WEM usage across all events
-                var wemUsage = new Dictionary<uint, int>();
-                foreach (var eventNode in root.Children)
-                {
-                    foreach (var wemNode in eventNode.Children)
-                    {
-                        if (wemNode.WemData != null)
-                        {
-                            if (!wemUsage.ContainsKey(wemNode.WemData.Id))
-                                wemUsage[wemNode.WemData.Id] = 0;
-                            wemUsage[wemNode.WemData.Id]++;
-                        }
-                    }
-                }
-                int wemUsageTotal = wemUsage.Values.Sum();
-
-                
-
-
-
-                // Store event name lookup
-                _eventNameLookup = eventNameLookup;
+                UpdateControlStates(isParsed: true);
                 Logger.LogSection("FILES LOADED SUCCESSFULLY");
-                Logger.LogFilesLoaded(binPath, wpkPath, bnkPath);
             }
             catch (Exception ex)
             {
                 Logger.LogSection("FILE LOADING FAILED");
                 Logger.LogException("ParseFilesButton_Click", ex);
                 Logger.LogFileParsingError(ex.Message);
+            }
+            finally
+            {
+                ExtractionProgressBar.Visibility = Visibility.Collapsed;
+                ExtractionProgressBar.IsIndeterminate = false;
+                ProgressText.Visibility = Visibility.Collapsed;
+                ParseFilesButton.IsEnabled = true;
             }
         }
 

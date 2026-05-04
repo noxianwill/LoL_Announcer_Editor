@@ -2,8 +2,11 @@ using System;
 using System.Globalization;
 using System.Windows.Data;
 
-namespace LoL_Announcer_Editor
+namespace LoL_Announcer_Editor.UI.Converters
 {
+    /// <summary>
+    /// Prefixes a replacement filename with an arrow for UI display.
+    /// </summary>
     public class WemArrowConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

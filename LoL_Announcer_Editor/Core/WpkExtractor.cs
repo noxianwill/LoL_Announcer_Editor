@@ -3,28 +3,24 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Models;
+using LoL_Announcer_Editor.Utils;
+
+namespace LoL_Announcer_Editor.Core
 {
-    public class WpkFileEntry
-    {
-        public uint DataOffset { get; set; }
-        public uint DataLength { get; set; }
-        public required string Filename { get; set; }
-        public required byte[] Data { get; set; }
-    }
-
-    public class WpkFile
-    {
-        public required byte[] Magic { get; set; }
-        public uint Version { get; set; }
-        public uint FileCount { get; set; }
-        public uint OffsetAmount { get; set; }
-        public List<uint> Offsets { get; set; } = new List<uint>();
-        public List<WpkFileEntry> Entries { get; set; } = new List<WpkFileEntry>();
-    }
-
+    /// <summary>
+    /// Service for extracting and parsing Wwise WPK (Riot Package) files.
+    /// Handles slot mapping and WEM data retrieval.
+    /// </summary>
     public static class WpkExtractor
     {
+        /// <summary>
+        /// Parses a WPK file and maps its content to provided string hashes and BNK event IDs.
+        /// </summary>
+        /// <param name="wpkPath">Path to the .wpk file.</param>
+        /// <param name="stringHashes">List of hashes from the BIN file.</param>
+        /// <param name="bnkEventIds">Optional set of event IDs from the BNK file for filtering.</param>
+        /// <returns>A WemInformation object containing the parsed and grouped data.</returns>
         public static WemInformation? ParseWpkFile(string wpkPath, List<StringHash> stringHashes, HashSet<uint>? bnkEventIds = null)
         {
             Logger.LogWpkSection(wpkPath);

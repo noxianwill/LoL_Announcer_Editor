@@ -4,8 +4,14 @@ using System.Text;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Models;
+
+namespace LoL_Announcer_Editor.Utils
 {
+    /// <summary>
+    /// Static logging engine that handles file-based logging and categorized diagnostic output.
+    /// All logs are written to 'app.log' in the application directory.
+    /// </summary>
     public static class Logger
     {
         private static readonly string _logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.log");

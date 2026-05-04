@@ -3,26 +3,26 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace LoL_Announcer_Editor
-{
-    public class StringHash
-    {
-        public required string String { get; set; }
-        public uint Hash { get; set; }
-        public uint ContainerId { get; set; }
-        public uint MusicSegmentId { get; set; }
-        public uint SwitchId { get; set; }
-        public uint SoundIndex { get; set; }
-    }
+using LoL_Announcer_Editor.Models;
 
+namespace LoL_Announcer_Editor.Utils
+{
+    /// <summary>
+    /// Static utility for parsing Riot Games BIN files and extracting event string hashes.
+    /// </summary>
     public static class BinParser
     {
+        /// <summary>
+        /// Calculates the FNV-1 (32-bit) hash of a string, case-insensitively.
+        /// Matches the hash algorithm used in League of Legends BIN files.
+        /// </summary>
         public static uint Fnv1Hash(string input)
         {
             uint hash = 0x811c9dc5;
             foreach (char c in input)
             {
                 hash *= 0x01000193;
+                // Treat uppercase as lowercase for consistent hashing
                 uint charValue = (uint)((c > 64 && c < 91) ? c + 32 : c);
                 hash ^= charValue;
             }
@@ -71,6 +71,11 @@ namespace LoL_Announcer_Editor
             return -1;
         }
 
+        /// <summary>
+        /// Parses a BIN file to extract all 'events' and 'music' string hashes.
+        /// </summary>
+        /// <param name="binPath">Path to the .bin file.</param>
+        /// <returns>A list of StringHash objects, or null if parsing fails.</returns>
         public static List<StringHash>? ParseBinFile(string binPath)
         {
             if (!File.Exists(binPath))
@@ -81,7 +86,7 @@ namespace LoL_Announcer_Editor
             byte[] buffer = File.ReadAllBytes(binPath);
             var savedStrings = new List<StringHash>();
 
-            // Search for 'events' containers
+            // Search for 'events' containers (identified by specific byte patterns)
             {
                 byte[] toSearch = { 0x84, 0xE3, 0xD8, 0x12, 0x80, 0x10 };
                 int currentPosition = 0;

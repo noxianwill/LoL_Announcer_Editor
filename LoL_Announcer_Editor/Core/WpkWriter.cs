@@ -3,8 +3,14 @@ using System.IO;
 using System.Text;
 using System.Collections.Generic;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Models;
+using LoL_Announcer_Editor.Utils;
+
+namespace LoL_Announcer_Editor.Core
 {
+    /// <summary>
+    /// Helper for wrapping raw binary data for reading.
+    /// </summary>
     public class ReadableBinaryData
     {
         public byte[] Data { get; set; }
@@ -19,6 +25,10 @@ namespace LoL_Announcer_Editor
         }
     }
 
+    /// <summary>
+    /// Specialized writer for WPK files that preserves the original slot structure.
+    /// This is essential for League of Legends compatibility.
+    /// </summary>
     public static class WpkWriter
     {
         // Helper for clamping to next higher multiple of a power of two
@@ -41,6 +51,10 @@ namespace LoL_Announcer_Editor
 
         // Write WPK file preserving original slot structure
         // This is critical for maintaining game compatibility - deleted files become zero slots
+        /// <summary>
+        /// Writes a WPK file while preserving the original slot indices and headers.
+        /// This method is used when modifying an existing WPK to ensure the game can still find un-modified files.
+        /// </summary>
         public static void WriteWpkFilePreservingSlots(
             Dictionary<uint, AudioData> wemDataById,  // WEM ID -> AudioData (active files only)
             int originalSlotCount,                      // Original number of slots

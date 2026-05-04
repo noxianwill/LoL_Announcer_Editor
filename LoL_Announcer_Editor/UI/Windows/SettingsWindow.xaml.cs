@@ -1,7 +1,13 @@
 using System.Windows;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Services;
+
+namespace LoL_Announcer_Editor.UI.Windows
 {
+    /// <summary>
+    /// Interaction logic for SettingsWindow.xaml.
+    /// Handles user configuration and settings persistence.
+    /// </summary>
     public partial class SettingsWindow : Window
     {
         public SettingsWindow()

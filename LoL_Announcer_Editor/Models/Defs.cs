@@ -8,8 +8,13 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Utils;
+
+namespace LoL_Announcer_Editor.Models
 {
+    /// <summary>
+    /// Global definitions and logging proxies for the application.
+    /// </summary>
     public static class Defs
     {
         public static int VERBOSE = 0;
@@ -41,12 +46,18 @@ namespace LoL_Announcer_Editor
         }
     }
 
+    /// <summary>
+    /// Container for raw binary data and its length.
+    /// </summary>
     public class BinaryData
     {
         public ulong Length { get; set; }
         public required byte[] Data { get; set; }
     }
 
+    /// <summary>
+    /// Represents a Wwise Audio file (WEM) with its ID and binary content.
+    /// </summary>
     public class AudioData
     {
         public uint Id { get; set; }
@@ -54,6 +65,9 @@ namespace LoL_Announcer_Editor
         public required byte[] Data { get; set; }
     }
 
+    /// <summary>
+    /// Helper class for grouping WEM files by string names.
+    /// </summary>
     public class StringWithChildren
     {
         public required string String { get; set; }
@@ -61,6 +75,9 @@ namespace LoL_Announcer_Editor
         public List<AudioData> Children { get; set; } = new List<AudioData>();
     }
 
+    /// <summary>
+    /// Comprehensive metadata about WEM files in a WPK package, including slot mapping.
+    /// </summary>
     public class WemInformation
     {
         public List<StringWithChildren> GroupedWems { get; set; } = new List<StringWithChildren>();
@@ -75,6 +92,9 @@ namespace LoL_Announcer_Editor
         public Dictionary<int, WpkFileEntry> SlotIndexToEntry { get; set; } = new Dictionary<int, WpkFileEntry>();
     }
 
+    /// <summary>
+    /// Types of nodes displayed in the application TreeView.
+    /// </summary>
     public enum NodeType
     {
         Root,
@@ -83,6 +103,10 @@ namespace LoL_Announcer_Editor
         WemFile
     }
 
+    /// <summary>
+    /// ViewModel for the TreeView display, representing hierarchical data from BNK/WPK.
+    /// Supports multi-select with checkbox propagation.
+    /// </summary>
     public class TreeNode : INotifyPropertyChanged
     {
         public required string Name { get; set; }

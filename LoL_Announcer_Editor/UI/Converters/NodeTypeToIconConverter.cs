@@ -4,8 +4,13 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Models;
+
+namespace LoL_Announcer_Editor.UI.Converters
 {
+    /// <summary>
+    /// Converts a NodeType enum value to its corresponding vector icon geometry.
+    /// </summary>
     public class NodeTypeToIconConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

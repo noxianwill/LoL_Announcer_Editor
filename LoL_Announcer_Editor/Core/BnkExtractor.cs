@@ -4,11 +4,26 @@ using System.IO;
 using System.Text;
 using System.Linq;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Models;
+using LoL_Announcer_Editor.Utils;
+
+namespace LoL_Announcer_Editor.Core
 {
+    /// <summary>
+    /// Service for extracting and parsing Wwise BNK files.
+    /// Supports full-fidelity parsing of HIRC sections to preserve all object data.
+    /// </summary>
     public static class BnkExtractor
     {
 
+        /// <summary>
+        /// Parses an event BNK file in full-fidelity mode, populating the provided sections and full-fidelity models.
+        /// This ensures that all HIRC objects are either parsed into strongly-typed objects or kept as raw data.
+        /// </summary>
+        /// <param name="path">Path to the .bnk file.</param>
+        /// <param name="fullFidelity">The full-fidelity model to populate.</param>
+        /// <param name="sections">The logical sections to populate.</param>
+        /// <returns>True if parsing was successful, false otherwise.</returns>
         public static bool ParseEventBnkFile_FullFidelity(string path, BnkFullFidelity fullFidelity, BNKSections sections)
         {
             if (!File.Exists(path)) { Logger.LogBnkError(path); return false; }

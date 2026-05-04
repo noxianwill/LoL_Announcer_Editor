@@ -2,8 +2,13 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Models;
+
+namespace LoL_Announcer_Editor.Services
 {
+    /// <summary>
+    /// Manages application settings, including persistence to settings.json.
+    /// </summary>
     public static class SettingsManager
     {
         // Settings properties with updated default values

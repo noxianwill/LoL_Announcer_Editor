@@ -5,7 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Xml.Linq;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Models;
+using LoL_Announcer_Editor.Utils;
+
+namespace LoL_Announcer_Editor.Core
 {
     /// <summary>
     /// Exports the parsed BNK/WPK hierarchy to a Wwise project template.

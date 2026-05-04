@@ -3,8 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace LoL_Announcer_Editor
+using LoL_Announcer_Editor.Models;
+
+namespace LoL_Announcer_Editor.Utils
 {
+    /// <summary>
+    /// Static class containing specialized readers for different HIRC (Hierarchy) object types in a Wwise BNK.
+    /// </summary>
     public static class BnkReaders
     {
         // ── Type 2: Sound ─────────────────────────────────────────────────────

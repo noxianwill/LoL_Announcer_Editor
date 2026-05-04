@@ -2,8 +2,11 @@ using System;
 using System.Globalization;
 using System.Windows.Data;
 
-namespace LoL_Announcer_Editor
+namespace LoL_Announcer_Editor.UI.Converters
 {
+    /// <summary>
+    /// Multi-value converter that combines a WEM filename and its replacement for UI display.
+    /// </summary>
     public class WemNameConverter : IMultiValueConverter
     {
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)

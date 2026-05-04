@@ -3,8 +3,11 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
-namespace LoL_Announcer_Editor
+namespace LoL_Announcer_Editor.Utils
 {
+    /// <summary>
+    /// General-purpose utility methods for string manipulation, hex conversion, and directory management.
+    /// </summary>
     public static class GeneralUtils
     {
         public static string Lower(string input)

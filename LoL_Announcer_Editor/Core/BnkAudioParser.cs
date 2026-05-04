@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Linq;
+using LoL_Announcer_Editor.Models;
+using LoL_Announcer_Editor.Utils;
 
-namespace LoL_Announcer_Editor
+namespace LoL_Announcer_Editor.Core
 {
     public class BnkFileEntry
     {
