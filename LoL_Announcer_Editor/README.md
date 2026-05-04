@@ -16,6 +16,7 @@ By combining these, the editor shows you exactly which sound plays for which eve
 
 ### 🏗️ Wwise Project Reconstruction (The "Holy Grail")
 The standout feature of this software is its ability to **reverse-engineer** binary game files back into a functional **Wwise Project (`.wproj`)**. 
+- This tool is specifically designed to work with **Wwise version 2022.1.3.8179**.
 - Normally, once a game is built, the original project files are gone. 
 - This tool analyzes the binary HIRC (Hierarchy) data in the `.bnk` files to reconstruct the original Actor-Mixer hierarchy, containers, and event mappings.
 - You can then open this project in the professional Wwise editor to add sophisticated effects, change randomization logic, or completely redesign the announcer from scratch using industry-standard tools.
@@ -50,6 +51,19 @@ Click **"Parse Files"**. Use the search bar to find specific triggers. You can p
 - **Batch Export**: Save all original audio files at once for backup or reference.
 - **Dark/Light Mode**: A modern, sleek UI designed for long modding sessions.
 - **Detailed Logging**: A built-in diagnostic console to track exactly what's happening under the hood.
+
+---
+
+## ❓ Frequently Asked Questions
+
+**Q: Where can I find the announcer files?**
+A: They are typically located in your LoL installation folder under `Riot Games\League of Legends\Game\DATA\FINAL\WAD`. You may need to extract them first using a WAD extractor.
+
+**Q: Do I need Wwise installed?**
+A: You only need Wwise if you want to open the exported project or generate your own `.wem` files. For project editing, we recommend **Wwise 2022.1.3.8179** for the best compatibility.
+
+**Q: Is this safe to use?**
+A: This tool only modifies local files on your machine. However, always keep a backup of your original announcer files before making changes.
 
 ---
 
