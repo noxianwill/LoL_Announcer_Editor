@@ -4,7 +4,7 @@ using System.Windows.Data;
 
 namespace LoL_Announcer_Editor
 {
-    public class WemDisplayNameConverter : IMultiValueConverter
+    public class WemNameConverter : IMultiValueConverter
     {
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {

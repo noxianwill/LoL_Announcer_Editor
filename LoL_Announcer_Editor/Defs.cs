@@ -17,15 +17,15 @@ namespace LoL_Announcer_Editor
 
         public static void EPrintf(string format, params object[] args)
         {
-            var writer = ConsolelessStderr ?? Console.Error;
             string msg = string.Format(format, args);
-            writer.Write(msg);
+            Logger.LogError(msg.TrimEnd('\n', '\r'));
         }
 
 #if DEBUG
         public static void DPrintf(string format, params object[] args)
         {
-            Console.Write(format, args);
+            string msg = string.Format(format, args);
+            Logger.Log("[DEBUG] " + msg.TrimEnd('\n', '\r'));
         }
 #else
         public static void DPrintf(string format, params object[] args) { }
@@ -34,20 +34,9 @@ namespace LoL_Announcer_Editor
         public static void VPrintf(int level, string format, params object[] args)
         {
             if (VERBOSE >= level)
-                Console.Write(format, args);
-        }
-
-        // Converter for string to Visibility
-        public class StringNullOrEmptyToVisibilityConverter : IValueConverter
-        {
-            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
             {
-                var str = value as string;
-                return !string.IsNullOrEmpty(str) ? Visibility.Visible : Visibility.Collapsed;
-            }
-            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-            {
-                throw new NotImplementedException();
+                string msg = string.Format(format, args);
+                Logger.Log("[VERBOSE] " + msg.TrimEnd('\n', '\r'));
             }
         }
     }
@@ -140,21 +129,9 @@ namespace LoL_Announcer_Editor
             }
         }
 
-        private bool _isMarkedForDeletion = false;
-        public bool     IsMarkedForDeletion
-        {
-            get => _isMarkedForDeletion;
-            set
-            {
-                if (_isMarkedForDeletion != value)
-                {
-                    _isMarkedForDeletion = value;
-                    OnPropertyChanged(nameof(IsMarkedForDeletion));
-                }
-            }
-        }
 
-        private bool _isExpanded = true;
+
+        private bool _isExpanded = false;
         public bool IsExpanded
         {
             get => _isExpanded;
@@ -194,6 +171,20 @@ namespace LoL_Announcer_Editor
             Parent.IsChecked = parentState;
             Parent._isInternalChange = false;
             Parent.UpdateParentChecked();
+        }
+
+        public void ExpandAll()
+        {
+            IsExpanded = true;
+            foreach (var child in Children)
+                child.ExpandAll();
+        }
+
+        public void CollapseAll()
+        {
+            IsExpanded = false;
+            foreach (var child in Children)
+                child.CollapseAll();
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

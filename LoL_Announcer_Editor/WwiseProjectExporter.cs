@@ -26,17 +26,16 @@ namespace LoL_Announcer_Editor
             Dictionary<uint, string> eventNameLookup,
             string projectFolder)
         {
-            WwiseExporterLogger.LogSection("WWISE PROJECT EXPORT START");
-            WwiseExporterLogger.Log($"Project Folder: {projectFolder}");
-            WwiseExporterLogger.Log($"BNK Version: {sections.BnkVersion}");
-            WwiseExporterLogger.Log($"BNK Stats: {sections.Sounds.Count} Sounds, {sections.Events.Count} Events, {sections.RandomContainers.Count} Containers");
+            Logger.LogSection("WWISE PROJECT EXPORT START");
+            Logger.LogExportStart(projectFolder);
+            Logger.LogExportBnkVersion(sections.BnkVersion);
+            Logger.LogExportStats(sections);
 
             // 1. Path setup
             string actorMixerWwuPath = Path.Combine(projectFolder, "Actor-Mixer Hierarchy", "Default Work Unit.wwu");
             string eventsWwuPath = Path.Combine(projectFolder, "Events", "Default Work Unit.wwu");
 
-            WwiseExporterLogger.Log($"Target WWU (Actor): {actorMixerWwuPath}");
-            WwiseExporterLogger.Log($"Target WWU (Events): {eventsWwuPath}");
+            Logger.LogExportPaths(actorMixerWwuPath, eventsWwuPath);
 
             if (!File.Exists(actorMixerWwuPath))
                 throw new FileNotFoundException("Default Work Unit.wwu not found in Actor-Mixer Hierarchy");
@@ -44,7 +43,7 @@ namespace LoL_Announcer_Editor
                 throw new FileNotFoundException("Default Work Unit.wwu not found in Events");
 
             // 2. Load Work Units
-            WwiseExporterLogger.Log("Loading XML documents...");
+            Logger.Log("Loading XML documents...");
             var actorMixerDoc = XDocument.Load(actorMixerWwuPath);
             var eventsDoc = XDocument.Load(eventsWwuPath);
 
@@ -57,11 +56,11 @@ namespace LoL_Announcer_Editor
 
             // 3. Extract existing Sound objects from the Default Work Unit
             var soundMap = ExtractExistingSounds(actorMixerDoc);
-            WwiseExporterLogger.Log($"Sound Map build complete. {soundMap.Count} sounds ready for re-parenting.");
+            Logger.LogExportSoundMap(soundMap.Count);
 
             if (soundMap.Count == 0)
             {
-                WwiseExporterLogger.LogError("CRITICAL: soundMap is empty! No sounds were found to organize.");
+                Logger.LogError("CRITICAL: soundMap is empty! No sounds were found to organize.");
                 throw new InvalidOperationException("No 'Sound' objects found in your Wwise project. " +
                     "Please make sure you have imported the .wav files into the 'Default Work Unit' of the Actor-Mixer Hierarchy and saved the project before running this export.");
             }
@@ -71,31 +70,31 @@ namespace LoL_Announcer_Editor
             var workUnitElement = actorMixerDoc.Descendants().FirstOrDefault(e => e.Name.LocalName == "WorkUnit");
             if (workUnitElement == null)
             {
-                WwiseExporterLogger.LogError("Could not find 'WorkUnit' element in XML.");
+                Logger.LogError("Could not find 'WorkUnit' element in XML.");
                 throw new InvalidOperationException("Could not find 'WorkUnit' element in Actor-Mixer Hierarchy");
             }
 
-            WwiseExporterLogger.Log($"Found WorkUnit: {workUnitElement.Attribute("Name")?.Value} (ID: {workUnitElement.Attribute("ID")?.Value})");
+            Logger.LogExportWorkUnit(workUnitElement.Attribute("Name")?.Value, workUnitElement.Attribute("ID")?.Value);
 
             var childrenList = workUnitElement.Elements().FirstOrDefault(e => e.Name.LocalName == "ChildrenList");
             if (childrenList == null)
             {
-                WwiseExporterLogger.Log("ChildrenList not found, creating new one.");
+                Logger.Log("ChildrenList not found, creating new one.");
                 childrenList = new XElement(workUnitElement.Name.Namespace + "ChildrenList");
                 workUnitElement.Add(childrenList);
             }
             
             // Store references for event creation
-            WwiseExporterLogger.Log("Extracting project references (Buses, Conversions)...");
+            Logger.Log("Extracting project references (Buses, Conversions)...");
             ExtractReferences(actorMixerDoc, projectFolder);
             
-            WwiseExporterLogger.Log("Clearing existing children from Default Work Unit...");
+            Logger.Log("Clearing existing children from Default Work Unit...");
             childrenList.RemoveAll();
 
             // Build Containers
-            WwiseExporterLogger.Log("Building Actor-Mixer Hierarchy (Containers and Sounds)...");
+            Logger.Log("Building Actor-Mixer Hierarchy (Containers and Sounds)...");
             var containers = BuildActorMixerHierarchy(sections, eventNameLookup, soundMap, projectFolder);
-            WwiseExporterLogger.Log($"Generated {containers.Count} top-level containers/sounds.");
+            Logger.LogExportGeneratedCount(containers.Count);
 
             foreach (var container in containers)
             {
@@ -124,7 +123,7 @@ namespace LoL_Announcer_Editor
             eventsDoc.Save(eventsWwuPath);
 
             // 8. Build SoundBanks
-            WwiseExporterLogger.Log("Building SoundBanks Work Unit...");
+            Logger.Log("Building SoundBanks Work Unit...");
             string soundBanksWwuPath = Path.Combine(projectFolder, "SoundBanks", "Default Work Unit.wwu");
             XDocument sbDoc;
             if (File.Exists(soundBanksWwuPath))
@@ -133,7 +132,7 @@ namespace LoL_Announcer_Editor
             }
             else
             {
-                WwiseExporterLogger.Log("SoundBanks/Default Work Unit.wwu not found. Creating it...");
+                Logger.Log("SoundBanks/Default Work Unit.wwu not found. Creating it...");
                 Directory.CreateDirectory(Path.Combine(projectFolder, "SoundBanks"));
                 sbDoc = CreateDefaultSoundBanksWorkUnit();
             }
@@ -188,12 +187,12 @@ namespace LoL_Announcer_Editor
                     if (modified)
                     {
                         doc.Save(conversionWwuPath);
-                        WwiseExporterLogger.Log($"Patched {Path.GetFileName(conversionWwuPath)} to use Vorbis instead of PCM.");
+                        Logger.LogExportPatch(conversionWwuPath);
                     }
                 }
                 catch (Exception ex)
                 {
-                    WwiseExporterLogger.LogError($"Failed to patch Conversion Settings file {Path.GetFileName(conversionWwuPath)}: {ex.Message}");
+                    Logger.LogExportPatchError(Path.GetFileName(conversionWwuPath), ex.Message);
                 }
             }
         }
@@ -201,18 +200,18 @@ namespace LoL_Announcer_Editor
         private Dictionary<uint, XElement> ExtractExistingSounds(XDocument doc)
         {
             var soundMap = new Dictionary<uint, XElement>();
-            WwiseExporterLogger.Log("--- STARTING SOUND EXTRACTION ---");
+            Logger.LogExportSoundExtractionStart();
 
             // Use LocalName to ignore namespaces which often break XDocument searches in Wwise files
             var soundElements = doc.Descendants().Where(e => e.Name.LocalName == "Sound").ToList();
-            WwiseExporterLogger.Log($"Found {soundElements.Count} raw 'Sound' elements in the WWU file.");
+            Logger.LogExportRawSounds(soundElements.Count);
 
             foreach (var soundEl in soundElements)
             {
                 string name = soundEl.Attribute("Name")?.Value;
                 if (string.IsNullOrEmpty(name))
                 {
-                    WwiseExporterLogger.Log("  Warning: Found Sound element with no Name attribute.");
+                    Logger.Log("  Warning: Found Sound element with no Name attribute.");
                     continue;
                 }
 
@@ -239,17 +238,17 @@ namespace LoL_Announcer_Editor
 
                 if (foundId)
                 {
-                    WwiseExporterLogger.Log($"  Extracted WEM ID {wemId} from Wwise object '{name}'");
+                    Logger.LogExportSoundExtracted(wemId, name);
                     var clone = new XElement(soundEl);
                     soundMap[wemId] = clone;
                 }
                 else
                 {
-                    WwiseExporterLogger.Log($"  Warning: Could not extract numeric ID from sound name '{name}'");
+                    Logger.LogExportIdWarning(name);
                 }
             }
 
-            WwiseExporterLogger.Log($"--- EXTRACTION COMPLETE: {soundMap.Count} unique IDs mapped ---");
+            Logger.LogExportSoundExtractionComplete(soundMap.Count);
             return soundMap;
         }
 
@@ -306,14 +305,14 @@ namespace LoL_Announcer_Editor
                             {
                                 _conversionSettingsId = defaultConversion.Attribute("ID")?.Value ?? "";
                             }
-                            WwiseExporterLogger.Log($"Extracted Conversion Settings ID from wwu: {_conversionSettingsId} (WorkUnit: {_conversionSettingsWorkUnitId})");
+                            Logger.LogExportConvId(_conversionSettingsId, _conversionSettingsWorkUnitId);
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                WwiseExporterLogger.LogError($"Failed to extract references from conversion .wwu: {ex.Message}");
+                Logger.LogExportRefError(ex.Message);
             }
         }
 
@@ -484,7 +483,7 @@ namespace LoL_Announcer_Editor
         {
             if (_recursionStack.Contains(targetId))
             {
-                WwiseExporterLogger.Log($"Cycle detected for ID {targetId}, skipping duplication.");
+                Logger.LogExportCycle(targetId);
                 return null;
             }
 
@@ -800,7 +799,7 @@ namespace LoL_Announcer_Editor
             }
 
             // AdvBits BNK 145: bit0=MaxReachedBehavior, bit1=UseVirtualBehavior, bit2=OverLimitBehavior
-            WwiseExporterLogger.Log($"    Node {element.Attribute("Name")?.Value} AdvBits: 0x{nbp.AdvBits:X2}");
+            Logger.LogExportAdvBits(element.Attribute("Name")?.Value, nbp.AdvBits);
             
             int maxReached = (nbp.AdvBits & 0x01) != 0 ? 1 : 0;
             int overLimit = (nbp.AdvBits & 0x04) != 0 ? 1 : 0;
@@ -813,7 +812,7 @@ namespace LoL_Announcer_Editor
             SetProperty(propertyList, "VirtualVoiceQueueBehavior", "int16", nbp.VirtualQueueBehavior.ToString());
             SetProperty(propertyList, "BelowThresholdBehavior", "int16", nbp.BelowThresholdBehavior.ToString());
             
-            WwiseExporterLogger.Log($"    Mapped: MaxReached={maxReached}, OverLimit={overLimit}, UseVirtual={useVirtual}");
+            Logger.LogExportMapped(maxReached, overLimit, useVirtual);
 
             if (nbp.MaxNumInstance > 0)
             {
@@ -837,7 +836,7 @@ namespace LoL_Announcer_Editor
             string projectFolder)
         {
             var childrenList = new XElement("ChildrenList");
-            WwiseExporterLogger.Log($"Building Container '{name}' (ID: {container.SelfId})");
+            Logger.LogExportBuildingContainer(name, container.SelfId);
 
             var childIds = container.ChildrenIds.Count > 0
                 ? container.ChildrenIds.ToList()
@@ -1089,7 +1088,7 @@ namespace LoL_Announcer_Editor
             string bankGuid = GenerateGuid();
             // SoundBank ShortID: Wwise uses FNV32 hash of the bank name (computed dynamically).
             string bankShortId = ComputeFnv32Hash(bankName).ToString();
-            WwiseExporterLogger.Log($"SoundBank name: '{bankName}', FNV32 ShortID: {bankShortId}");
+            Logger.LogExportBankInfo(bankName, bankShortId);
 
             var inclusionList = new XElement("ObjectInclusionList");
             foreach (var evt in events)

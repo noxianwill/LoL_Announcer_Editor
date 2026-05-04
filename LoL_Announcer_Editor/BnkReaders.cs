@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace LoL_Announcer_Editor
 {
-    public static class BnkObjectReaders
+    public static class BnkReaders
     {
         // ── Type 2: Sound ─────────────────────────────────────────────────────
         public static bool ReadSoundObject(BinaryReader reader, List<Sound> sounds, uint bnkVersion, byte[] _unused)
@@ -27,7 +27,7 @@ namespace LoL_Announcer_Editor
             }
             catch (Exception ex)
             {
-                WwiseExporterLogger.LogError($"    [Type 2] Sound {obj.SelfId} Parse Error: {ex.Message}");
+                Logger.LogHircSoundError(obj.SelfId, ex.Message);
             }
             sounds.Add(obj);
             return true;
@@ -63,11 +63,11 @@ namespace LoL_Announcer_Editor
                     obj.BankId = reader.ReadUInt32();
                 }
 
-                WwiseExporterLogger.Log($"    [Type 3] Action {obj.SelfId}: Target {obj.TargetId}, Type {obj.ActionType}");
+                Logger.LogHircAction(obj.SelfId, obj.TargetId, obj.ActionType);
             }
             catch (Exception ex)
             {
-                WwiseExporterLogger.LogError($"    [Type 3] Action {obj.SelfId} Parse Error: {ex.Message}");
+                Logger.LogHircActionError(obj.SelfId, ex.Message);
             }
             actions.Add(obj);
             return true;
@@ -87,11 +87,11 @@ namespace LoL_Announcer_Editor
                     uint actionId = reader.ReadUInt32();
                     obj.EventIds.Add(actionId);
                 }
-                WwiseExporterLogger.Log($"    [Type 4] Event {obj.SelfId}: {obj.EventIds.Count} actions found.");
+                Logger.LogHircEvent(obj.SelfId, obj.EventIds.Count);
             }
             catch (Exception ex)
             {
-                WwiseExporterLogger.LogError($"    [Type 4] Event {obj.SelfId} Parse Error: {ex.Message}");
+                Logger.LogHircEventError(obj.SelfId, ex.Message);
             }
             events.Add(obj);
             return true;
@@ -141,11 +141,11 @@ namespace LoL_Announcer_Editor
                     });
                 }
 
-                WwiseExporterLogger.Log($"    [Type 5] Container {obj.SelfId}: Found {obj.SoundIdAmount} children.");
+                Logger.LogHircContainer(obj.SelfId, obj.SoundIdAmount);
             }
             catch (Exception ex) 
             {
-                WwiseExporterLogger.LogError($"    ERROR in ReadRandomContainerObject {obj.SelfId}: {ex.Message}");
+                Logger.LogHircContainerError(obj.SelfId, ex.Message);
             }
             randomContainers.Add(obj);
             return true;
@@ -176,11 +176,11 @@ namespace LoL_Announcer_Editor
                     obj.Children.Add(reader.ReadUInt32());
                 }
 
-                WwiseExporterLogger.Log($"    [Type 6] SwitchContainer {obj.SelfId}: Found {obj.Children.Count} children.");
+                Logger.LogHircSwitch(obj.SelfId, obj.Children.Count);
             }
             catch (Exception ex)
             {
-                WwiseExporterLogger.LogError($"    ERROR in ReadSwitchContainerObject {obj.SelfId}: {ex.Message}");
+                Logger.LogHircSwitchError(obj.SelfId, ex.Message);
             }
             switchContainers.Add(obj);
             return true;
@@ -203,11 +203,11 @@ namespace LoL_Announcer_Editor
                     obj.Children.Add(reader.ReadUInt32());
                 }
 
-                WwiseExporterLogger.Log($"    [Type 7] ActorMixer {obj.SelfId}: Found {obj.Children.Count} children.");
+                Logger.LogHircMixer(obj.SelfId, obj.Children.Count);
             }
             catch (Exception ex)
             {
-                WwiseExporterLogger.Log($"    ERROR in ReadActorMixerObject {obj.SelfId}: {ex.Message}");
+                Logger.LogHircMixerError(obj.SelfId, ex.Message);
             }
             actorMixers.Add(obj);
             return true;

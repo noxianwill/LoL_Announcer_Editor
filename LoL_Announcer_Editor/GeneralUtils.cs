@@ -26,7 +26,7 @@ namespace LoL_Announcer_Editor
                 return input - 'A' + 10;
             if (input >= 'a' && input <= 'f')
                 return input - 'a' + 10;
-            Defs.EPrintf($"Error: Malformed input to Char2Int ({input:X}).\n");
+            Logger.LogBinMalformed();
             return -1;
         }
 
@@ -40,7 +40,11 @@ namespace LoL_Announcer_Editor
                 int high = Char2Int(input[i]);
                 int low = Char2Int(input[i + 1]);
                 if (high == -1 || low == -1)
-                    throw new ArgumentException($"Invalid hex character at position {i} or {i + 1}.");
+                {
+                    string errorMsg = $"Invalid hex character at position {i} or {i + 1}.";
+                    Logger.LogError(errorMsg);
+                    throw new ArgumentException(errorMsg);
+                }
                 output[i / 2] = (byte)(high * 16 + low);
             }
             return output;

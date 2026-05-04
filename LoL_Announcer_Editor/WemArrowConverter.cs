@@ -4,7 +4,7 @@ using System.Windows.Data;
 
 namespace LoL_Announcer_Editor
 {
-    public class ReplacementFileNameToArrowRunConverter : IValueConverter
+    public class WemArrowConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {

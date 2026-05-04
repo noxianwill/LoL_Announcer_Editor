@@ -18,12 +18,15 @@ namespace LoL_Announcer_Editor
 
         public static void PackageWems(string inputFolder, string outputPath)
         {
-            WemAdditionLogger.LogSection("WPK PACKAGING START");
-            WemAdditionLogger.Log($"Source Folder: {inputFolder}");
-            WemAdditionLogger.Log($"Output File: {outputPath}");
+            Logger.LogSection("WPK PACKAGING START");
+            Logger.LogWpkSourceFolder(inputFolder);
+            Logger.LogWpkOutputFile(outputPath);
 
             if (!Directory.Exists(inputFolder))
-                throw new DirectoryNotFoundException($"Source folder not found: {inputFolder}");
+            {
+                Logger.LogWpkMissingDir(inputFolder);
+                throw new DirectoryNotFoundException(inputFolder);
+            }
 
             // 1. Gather WEM files and sort by ID (numerical)
             var wemFiles = Directory.GetFiles(inputFolder, "*.wem")
@@ -43,7 +46,7 @@ namespace LoL_Announcer_Editor
             if (wemFiles.Count == 0)
                 throw new FileNotFoundException("No .wem files found in the source folder.");
 
-            WemAdditionLogger.Log($"Found {wemFiles.Count} WEM files.");
+            Logger.LogWpkFoundWems(wemFiles.Count);
 
             using (var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
             using (var writer = new BinaryWriter(fs))
@@ -101,7 +104,7 @@ namespace LoL_Announcer_Editor
                     // Align after each WEM
                     AlignStream(fs, ALIGNMENT);
                     
-                    WemAdditionLogger.Log($"  Packaged: {wemFiles[i].Id}.wem (Offset: {dataOffset}, Size: {data.Length})");
+                    Logger.LogWpkPackagedEntry(wemFiles[i].Id, (int)dataOffset, data.Length);
                 }
 
                 // 6. Final Pass: Fill in the Offset Table
@@ -112,7 +115,7 @@ namespace LoL_Announcer_Editor
                 }
             }
 
-            WemAdditionLogger.LogSuccess($"WPK packaged successfully: {outputPath}");
+            Logger.LogWpkPackaged(outputPath);
         }
 
         private static void AlignStream(Stream stream, int alignment)

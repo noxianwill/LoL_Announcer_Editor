@@ -7,14 +7,16 @@ namespace LoL_Announcer_Editor
     public static class SettingsManager
     {
         // Settings properties with updated default values
-        public static bool PlayOnClick { get; set; } = true;        // Default: TRUE
-        public static bool ExtractOgg { get; set; } = false;        // Default: FALSE
-        // No AllowMultiselect property or logic
+        public static bool PlayOnClick { get; set; } = true;
+        public static bool ExtractOgg { get; set; } = false;
+        
+        // Appearance Settings
+        public static AppTheme CurrentTheme { get; set; } = AppTheme.Windows11;
+        public static string AccentColorHex { get; set; } = "#C89B3C"; // Default Hextech Gold
 
-        // Settings file path
+        // Settings file path (now in the same folder as the .exe)
         private static string SettingsFilePath => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "LoL Announcer Manager",
+            AppDomain.CurrentDomain.BaseDirectory,
             "settings.json"
         );
 
@@ -23,6 +25,8 @@ namespace LoL_Announcer_Editor
         {
             public bool PlayOnClick { get; set; }
             public bool ExtractOgg { get; set; }
+            public AppTheme CurrentTheme { get; set; }
+            public string AccentColorHex { get; set; }
         }
 
         // Load settings from file
@@ -39,6 +43,8 @@ namespace LoL_Announcer_Editor
                     {
                         PlayOnClick = settings.PlayOnClick;
                         ExtractOgg = settings.ExtractOgg;
+                        CurrentTheme = settings.CurrentTheme;
+                        AccentColorHex = settings.AccentColorHex ?? "#C89B3C";
                     }
                 }
             }
@@ -53,7 +59,6 @@ namespace LoL_Announcer_Editor
         {
             try
             {
-                // Ensure directory exists
                 string? directory = Path.GetDirectoryName(SettingsFilePath);
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
@@ -63,7 +68,9 @@ namespace LoL_Announcer_Editor
                 var settings = new SettingsData
                 {
                     PlayOnClick = PlayOnClick,
-                    ExtractOgg = ExtractOgg
+                    ExtractOgg = ExtractOgg,
+                    CurrentTheme = CurrentTheme,
+                    AccentColorHex = AccentColorHex
                 };
 
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
@@ -74,11 +81,9 @@ namespace LoL_Announcer_Editor
             }
             catch
             {
-                // Silently fail
             }
         }
 
-        // Backup current settings (for cancel functionality)
         private static SettingsData? _backupSettings;
 
         public static void BackupSettings()
@@ -86,7 +91,9 @@ namespace LoL_Announcer_Editor
             _backupSettings = new SettingsData
             {
                 PlayOnClick = PlayOnClick,
-                ExtractOgg = ExtractOgg
+                ExtractOgg = ExtractOgg,
+                CurrentTheme = CurrentTheme,
+                AccentColorHex = AccentColorHex
             };
         }
 
@@ -96,6 +103,8 @@ namespace LoL_Announcer_Editor
             {
                 PlayOnClick = _backupSettings.PlayOnClick;
                 ExtractOgg = _backupSettings.ExtractOgg;
+                CurrentTheme = _backupSettings.CurrentTheme;
+                AccentColorHex = _backupSettings.AccentColorHex;
             }
         }
 
@@ -104,6 +113,8 @@ namespace LoL_Announcer_Editor
         {
             PlayOnClick = true;
             ExtractOgg = false;
+            CurrentTheme = AppTheme.Windows11;
+            AccentColorHex = "#C89B3C";
         }
     }
 }

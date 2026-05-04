@@ -28,13 +28,13 @@ namespace LoL_Announcer_Editor
 #pragma warning restore CS8618
     }
 
-    public static class BnkAudioExtractor
+    public static class BnkAudioParser
     {
         public static WemInformation ParseAudioBnkFile(string bnkPath, List<StringHash> stringHashes)
         {
             if (!File.Exists(bnkPath))
             {
-                Defs.EPrintf($"Error: Failed to open \"{bnkPath}\".\n");
+                Logger.LogBnkError(bnkPath);
                 return null;
             }
             var bnkfile = new BnkFile();
@@ -43,7 +43,7 @@ namespace LoL_Announcer_Editor
             {
                 if (!ParseBnkFileEntries(reader, bnkfile))
                 {
-                    Defs.EPrintf($"Error: Failed to find the required sections in file \"{bnkPath}\". Make sure to provide the correct file.\n");
+                    Logger.LogBnkMissingSections(bnkPath);
                     return null;
                 }
             }
@@ -121,7 +121,7 @@ namespace LoL_Announcer_Editor
                 if (sectionNameBytes.Length < 4)
                     break;
                 string sectionName = Encoding.ASCII.GetString(sectionNameBytes);
-                sectionLog.Add($"{sectionName}@0x{sectionStart:X}");
+                Logger.LogBnkSection(sectionName, sectionStart);
                 sectionLength = reader.ReadUInt32();
                 if (sectionName == name)
                 {
@@ -165,7 +165,7 @@ namespace LoL_Announcer_Editor
             {
                 if (!ParseBnkFileEntries(reader, bnkfile))
                 {
-                    Defs.EPrintf($"Error: Failed to find the required sections in file \"{bnkPath}\". Make sure to provide the correct file.\n");
+                    Logger.LogBnkMissingSections(bnkPath);
                     return null;
                 }
             }
@@ -194,7 +194,7 @@ namespace LoL_Announcer_Editor
             {
                 if (!ParseBnkFileEntries(reader, bnkfile))
                 {
-                    Defs.EPrintf($"Error: Failed to find the required sections in file \"{bnkPath}\". Make sure to provide the correct file.\n");
+                    Logger.LogBnkMissingSections(bnkPath);
                     return null;
                 }
             }

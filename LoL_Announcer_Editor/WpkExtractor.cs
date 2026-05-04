@@ -27,11 +27,10 @@ namespace LoL_Announcer_Editor
     {
         public static WemInformation? ParseWpkFile(string wpkPath, List<StringHash> stringHashes, HashSet<uint>? bnkEventIds = null)
         {
-            WemAdditionLogger.LogSection($"ParseWpkFile: {wpkPath}");
+            Logger.LogWpkSection(wpkPath);
             if (!File.Exists(wpkPath))
             {
-                Defs.EPrintf($"Error: Failed to open \"{wpkPath}\".\n");
-                WemAdditionLogger.Log($"ERROR: WPK file not found: {wpkPath}");
+                Logger.LogWpkError(wpkPath);
                 return null;
             }
             try
@@ -118,12 +117,12 @@ namespace LoL_Announcer_Editor
                     }
                     catch (EndOfStreamException ex)
                     {
-                        WemAdditionLogger.LogException("ParseWpkFile - EndOfStreamException", ex);
+                        Logger.LogException("ParseWpkFile - EndOfStreamException", ex);
                         throw;
                     }
                     catch (Exception ex)
                     {
-                        WemAdditionLogger.LogException("ParseWpkFile - Exception reading WEM data", ex);
+                        Logger.LogException("ParseWpkFile - Exception reading WEM data", ex);
                         throw;
                     }
                 }
@@ -180,14 +179,14 @@ namespace LoL_Announcer_Editor
             }
             wemInformation.SortedWemDataList.Sort((a, b) => a.Id.CompareTo(b.Id));
 
-            WemAdditionLogger.Log($"WPK parsed: {wemInformation.SortedWemDataList.Count} WEM files found");
+            Logger.LogWpkParsed(wemInformation.SortedWemDataList.Count);
 
                 wemInformation.GroupedWems = GroupWems(wemInformation.SortedWemDataList, stringHashes);
                 return wemInformation;
             }
             catch (Exception ex)
             {
-                WemAdditionLogger.LogException($"ParseWpkFile ({wpkPath})", ex);
+                Logger.LogWpkParseException(wpkPath, ex);
                 return null;
             }
         }

@@ -2,9 +2,9 @@ using System.Windows;
 
 namespace LoL_Announcer_Editor
 {
-    public partial class OptionsWindow : Window
+    public partial class SettingsWindow : Window
     {
-        public OptionsWindow()
+        public SettingsWindow()
         {
             InitializeComponent();
             

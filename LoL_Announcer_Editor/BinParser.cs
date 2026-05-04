@@ -15,7 +15,7 @@ namespace LoL_Announcer_Editor
         public uint SoundIndex { get; set; }
     }
 
-    public static class BinUtils
+    public static class BinParser
     {
         public static uint Fnv1Hash(string input)
         {
@@ -75,7 +75,7 @@ namespace LoL_Announcer_Editor
         {
             if (!File.Exists(binPath))
             {
-                Defs.EPrintf($"Error: Failed to open \"{binPath}\".\n");
+                Logger.LogBinError(binPath);
                 return null;
             }
             byte[] buffer = File.ReadAllBytes(binPath);
@@ -94,7 +94,7 @@ namespace LoL_Announcer_Editor
                     currentPosition += 4; // skip object size
                     uint amount = BitConverter.ToUInt32(buffer, currentPosition);
                     currentPosition += 4;
-                    Defs.DPrintf($"event amount: {amount}\n");
+                    Logger.LogEventAmount(amount);
                     for (uint i = 0; i < amount; i++)
                     {
                         int bytesRead;
@@ -124,7 +124,7 @@ namespace LoL_Announcer_Editor
                     currentPosition += 4; // skip object size
                     ushort amount = BitConverter.ToUInt16(buffer, currentPosition);
                     currentPosition += 2;
-                    Defs.DPrintf($"music amount: {amount}\n");
+                    Logger.LogMusicAmount(amount);
                     for (ushort i = 0; i < amount; i++)
                     {
                         if (buffer.Length - currentPosition < 5) break;
@@ -144,12 +144,12 @@ namespace LoL_Announcer_Editor
 
             foreach (var sh in savedStrings)
             {
-                Defs.DPrintf($"string: \"{sh.String}\".\n");
+                Logger.LogBinString(sh.String);
             }
             return savedStrings;
 
         error:
-            Defs.EPrintf("Error: Malformed/truncated bin file!\n");
+            Logger.LogBinMalformed();
             return null;
         }
     }
