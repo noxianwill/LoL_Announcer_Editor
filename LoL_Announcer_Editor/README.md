@@ -31,9 +31,9 @@ Modding a modern announcer file can mean managing over **10,000 individual audio
 
 ### 1. Select Your Files
 Locate your extracted announcer files (usually found via a WAD extractor):
-- **BIN**: `.../announcer_global_female1_vo.bin`
-- **WPK**: `.../announcer_global_female1_vo.wpk`
-- **BNK**: `.../announcer_global_female1_vo_events.bnk`
+- **BIN**: `.../your_announcer_file.bin`
+- **WPK**: `.../your_announcer_file.wpk`
+- **BNK**: `.../your_announcer_file_events.bnk`
 
 ### 2. Parse and Explore
 Click **"Parse Files"**. Use the search bar to find specific triggers. You can preview the original audio directly in the editor to ensure you're editing the right line.
