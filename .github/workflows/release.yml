@@ -3,7 +3,7 @@ name: Build and Zip Release
 on:
   push:
     tags:
-      - 'v*' # This will trigger for any tag starting with 'v' (like v1.0)
+      - 'beta-v1.0.0' # The robot is now specifically listening for this name
 
 permissions:
   contents: write
@@ -31,6 +31,8 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: beta-v1.0.0
+          name: "beta-v1.0.0"
           files: ./LoL_Announcer_Editor.zip
           prerelease: true
           discussion_category_name: "Announcements"
