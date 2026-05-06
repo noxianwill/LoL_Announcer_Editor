@@ -3,7 +3,7 @@ name: Build My Project
 on:
   push:
     tags:
-      - 'beta-1.0.0' # This is the "Go" signal
+      - 'beta-1.1.0' # Note: We will use a new tag to trigger this update
 
 permissions:
   contents: write
@@ -24,12 +24,16 @@ jobs:
       - name: Turn code into a program
         run: dotnet publish -c Release -o ./my_built_files
 
+      - name: Zip the files
+        shell: pwsh
+        run: Compress-Archive -Path ./my_built_files/* -DestinationPath ./LoL_Announcer_Editor_Beta.zip
+
       - name: Put the program in a Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: beta-1.0.0
+          tag_name: beta-1.1.0
           prerelease: true
           discussion_category_name: "Announcements"
-          files: ./my_built_files/*
+          files: ./LoL_Announcer_Editor_Beta.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
