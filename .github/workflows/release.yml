@@ -1,0 +1,38 @@
+name: Build and Zip Release
+
+on:
+  push:
+    tags:
+      - 'v*' # This will trigger for any tag starting with 'v' (like v1.0)
+
+permissions:
+  contents: write
+  discussions: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Compile Program
+        run: dotnet publish -c Release -o ./temp_build
+
+      - name: Create Zip Archive
+        shell: pwsh
+        run: Compress-Archive -Path ./temp_build/* -DestinationPath ./LoL_Announcer_Editor.zip
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./LoL_Announcer_Editor.zip
+          prerelease: true
+          discussion_category_name: "Announcements"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
